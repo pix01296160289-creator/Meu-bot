@@ -41,18 +41,26 @@ async def erro_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     print(f"❌ ERRO CAPTURADO NO BOT: {context.error}", flush=True)
 
 # =========================
-# FUNÇÃO DE VERIFICAÇÃO DE MERCADO
+# FUNÇÃO DE VERIFICAÇÃO DE MERCADO (RIGOROSA)
 # =========================
 def verificar_status_mercado(par_api):
     agora = datetime.now()
-    dia_semana = agora.weekday() # 0 = Segunda, 5 = Sábado, 6 = Domingo
+    dia_semana = agora.weekday() # 0 = Segunda, ..., 5 = Sábado, 6 = Domingo
     hora = agora.hour
 
     data_formatada = agora.strftime('%d/%m/%Y às %H:%M')
 
-    if "BTC" not in par_api and "ETH" not in par_api and "XAU" not in par_api:
-        if dia_semana == 5 or (dia_semana == 6 and hora < 18):
-            return False, f"🔴 **MERCADO FECHADO (FIM DE SEMANA)**\n📅 *DATA/HORA:* {data_formatada}\n⚠️ *REABERTURA DOMINGO ÀS 18:00.*"
+    # Criptomoedas (BTC, ETH) rodam 24/7 (nunca fecham)
+    if "BTC" in par_api or "ETH" in par_api:
+        return True, f"🟢 **MERCADO CRIPTO 24/7 ABERTO**\n📅 *DATA/HORA:* {data_formatada}"
+
+    # Sábado (dia 5) o mercado de Forex e Metais está totalmente fechado
+    if dia_semana == 5:
+        return False, f"🔴 **MERCADO FECHADO (FIM DE SEMANA)**\n📅 *DATA/HORA:* {data_formatada}\n⚠️ *FOREX E METAIS FECHADOS. REABERTURA DOMINGO ÀS 18:00.*"
+    
+    # Domingo (dia 6) antes das 18:00 o mercado de Forex e Metais ainda está fechado
+    if dia_semana == 6 and hora < 18:
+        return False, f"🔴 **MERCADO FECHADO (FIM DE SEMANA)**\n📅 *DATA/HORA:* {data_formatada}\n⚠️ *FOREX E METAIS FECHADOS. REABERTURA DOMINGO ÀS 18:00.*"
 
     return True, f"🟢 **MERCADO ABERTO**\n📅 *DATA/HORA:* {data_formatada}"
 
@@ -89,13 +97,12 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
             instrucao_sistema = (
                 f"Você é o analista sênior do 'Snap Sinais Bot'. "
                 f"O operador se chama {nome_usuario}. "
-                f"⚠️ O mercado está FECHADO. Monte um **Panorama de Fechamento** seguindo exatamente este modelo:\n\n"
+                f"⚠️ O mercado está FECHADO. Monte um **Panorama de Fechamento** seguindo exatamente este modelo, sem sugerir ordens ativas:\n\n"
                 f"🔒 **PANORAMA DE FECHAMENTO - [NOME DO ATIVO]**\n"
                 f"• **Status:** Mercado Fechado 🔴\n"
-                f"• **Último Preço:** [Valor]\n"
-                f"• **Tendência de Fundo:** [Alta / Baixa / Lateral]\n"
-                f"• **Zonas Chave:** Suporte: [X] | Resistência: [Y]\n\n"
-                f"💡 *Reabertura domingo às 18:00.*"
+                f"• **Último Preço (Fechamento):** [Valor]\n"
+                f"• **Tendência de Fundo:** [Alta / Baixa / Lateral]\n\n"
+                f"💡 *Mercado fechado no momento. Reabertura domingo às 18:00.*"
             )
     else:
         instrucao_sistema = (
@@ -150,15 +157,15 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, par_api, nome
             rates = res.get("rates", {})
             preco_atual = str(rates.get(moeda_alvo, "N/A"))
 
-        status_texto = "Aberto" if mercado_aberto else "Fechado"
+        status_texto = "Aberto 🟢" if mercado_aberto else "Fechado 🔴"
 
         dados_mercado = (
             f"Ativo: {nome_ativo} | "
-            f"Status: {status_texto} | "
-            f"Preço Atual: {preco_atual}"
+            f"Status do Mercado: {status_texto} | "
+            f"Preço Real Obtido: {preco_atual}"
         )
 
-        prompt_ia = f"Gere o relatório analítico para os dados: {dados_mercado}"
+        prompt_ia = f"Gere o relatório analítico ou de fechamento para os dados reais: {dados_mercado}"
 
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
         resposta_ia = chamar_groq(prompt_ia, nome_usuario, modo_sinal=True, mercado_aberto=mercado_aberto)
