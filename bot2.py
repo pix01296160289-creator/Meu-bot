@@ -2,6 +2,7 @@ import os
 import sys
 import asyncio
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -41,10 +42,13 @@ async def erro_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     print(f"❌ ERRO CAPTURADO NO BOT: {context.error}", flush=True)
 
 # =========================
-# FUNÇÃO DE VERIFICAÇÃO DE MERCADO (RIGOROSA)
+# FUNÇÃO DE VERIFICAÇÃO DE MERCADO (FUSO DO BRASIL)
 # =========================
 def verificar_status_mercado(par_api):
-    agora = datetime.now()
+    # Pega a hora exata no fuso horário do Brasil (Brasília)
+    fuso_brasil = ZoneInfo("America/Sao_Paulo")
+    agora = datetime.now(fuso_brasil)
+    
     dia_semana = agora.weekday() # 0 = Segunda, ..., 5 = Sábado, 6 = Domingo
     hora = agora.hour
 
@@ -52,17 +56,17 @@ def verificar_status_mercado(par_api):
 
     # Criptomoedas (BTC, ETH) rodam 24/7 (nunca fecham)
     if "BTC" in par_api or "ETH" in par_api:
-        return True, f"🟢 **MERCADO CRIPTO 24/7 ABERTO**\n📅 *DATA/HORA:* {data_formatada}"
+        return True, f"🟢 **MERCADO CRIPTO 24/7 ABERTO**\n📅 *DATA/HORA (BR):* {data_formatada}"
 
     # Sábado (dia 5) o mercado de Forex e Metais está totalmente fechado
     if dia_semana == 5:
-        return False, f"🔴 **MERCADO FECHADO (FIM DE SEMANA)**\n📅 *DATA/HORA:* {data_formatada}\n⚠️ *FOREX E METAIS FECHADOS. REABERTURA DOMINGO ÀS 18:00.*"
+        return False, f"🔴 **MERCADO FECHADO (FIM DE SEMANA)**\n📅 *DATA/HORA (BR):* {data_formatada}\n⚠️ *FOREX E METAIS FECHADOS. REABERTURA DOMINGO ÀS 18:00.*"
     
     # Domingo (dia 6) antes das 18:00 o mercado de Forex e Metais ainda está fechado
     if dia_semana == 6 and hora < 18:
-        return False, f"🔴 **MERCADO FECHADO (FIM DE SEMANA)**\n📅 *DATA/HORA:* {data_formatada}\n⚠️ *FOREX E METAIS FECHADOS. REABERTURA DOMINGO ÀS 18:00.*"
+        return False, f"🔴 **MERCADO FECHADO (FIM DE SEMANA)**\n📅 *DATA/HORA (BR):* {data_formatada}\n⚠️ *FOREX E METAIS FECHADOS. REABERTURA DOMINGO ÀS 18:00.*"
 
-    return True, f"🟢 **MERCADO ABERTO**\n📅 *DATA/HORA:* {data_formatada}"
+    return True, f"🟢 **MERCADO ABERTO**\n📅 *DATA/HORA (BR):* {data_formatada}"
 
 # =========================
 # FUNÇÃO DE CHAMADA À API DA GROQ
@@ -102,7 +106,7 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
                 f"• **Status:** Mercado Fechado 🔴\n"
                 f"• **Último Preço (Fechamento):** [Valor]\n"
                 f"• **Tendência de Fundo:** [Alta / Baixa / Lateral]\n\n"
-                f"💡 *Mercado fechado no momento. Reabertura domingo às 18:00.*"
+                f"💡 *Mercado fechado no momento. Reabertura domingo às 18:00 (Horário de Brasília).*"
             )
     else:
         instrucao_sistema = (
