@@ -35,6 +35,12 @@ PALAVRAS_CHAT = ["oi", "olá", "bom dia", "boa tarde", "boa noite", "ajuda", "tu
 PALAVRAS_COTACAO = ["cotação", "preço", "valor", "quanto está"]
 
 # =========================
+# TRATADOR DE ERROS GLOBAL
+# =========================
+async def erro_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    print(f"❌ ERRO CAPTURADO NO BOT: {context.error}", flush=True)
+
+# =========================
 # FUNÇÃO DE VERIFICAÇÃO DE MERCADO
 # =========================
 def verificar_status_mercado(par_api):
@@ -44,11 +50,11 @@ def verificar_status_mercado(par_api):
 
     data_formatada = agora.strftime('%d/%m/%Y às %H:%M')
 
-    if "BTC" not in par_api and "ETH" not in par_api:
+    if "BTC" not in par_api and "ETH" not in par_api and "XAU" not in par_api:
         if dia_semana == 5 or (dia_semana == 6 and hora < 18):
             return False, f"🔴 **MERCADO FECHADO (FIM DE SEMANA)**\n📅 *DATA/HORA:* {data_formatada}\n⚠️ *REABERTURA DOMINGO ÀS 18:00.*"
 
-    return True, f"� **MERCADO ABERTO**\n📅 *DATA/HORA:* {data_formatada}"
+    return True, f"🟢 **MERCADO ABERTO**\n📅 *DATA/HORA:* {data_formatada}"
 
 # =========================
 # FUNÇÃO DE CHAMADA À API DA GROQ
@@ -69,12 +75,12 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
                 f"O mercado está ABERTO. Monte um **Sinal de Trade Profissional**, incluindo obrigatoriamente o **Tempo de Expiração** para Opções Binárias (ex: M1, M5 ou M15). "
                 f"Siga rigorosamente este modelo:\n\n"
                 f"🎯 **SINAL DE ANÁLISE - [NOME DO ATIVO]**\n"
-                f"• **Status:** Mercado Aberto �\n"
+                f"• **Status:** Mercado Aberto 🟢\n"
                 f"• **Tendência:** [Alta / Baixa / Lateral]\n"
                 f"• **Preço Atual:** [Valor]\n\n"
                 f"⏱️ **OPÇÃO BINÁRIA (EXPIRAÇÃO):**\n"
                 f"• **Tempo:** [Ex: M5 - 5 Minutos]\n"
-                f"• **Direção:** [CALL � (Compra) / PUT 🔴 (Venda)]\n"
+                f"• **Direção:** [CALL 🟢 (Compra) / PUT 🔴 (Venda)]\n"
                 f"• **Ponto de Entrada:** [Preço ideal]\n\n"
                 f"💡 *[Recomendação prática curta]*\n\n"
                 f"Proíba textos fora deste formato."
@@ -124,38 +130,43 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, par_api, nome
 
     await context.bot.send_message(chat_id=chat_id, text=f"🔍 *CONSULTANDO TERMINAIS PARA {nome_ativo.upper()}...*\n\n{info_status}", parse_mode="Markdown")
 
-    url_api = f"https://economia.awesomeapi.com.br/json/last/{par_api}"
+    preco_atual = "N/A"
+    
     try:
-        resposta_api = requests.get(url_api, timeout=10)
-        if resposta_api.status_code == 200:
-            dados_json = resposta_api.json()
-            chave_json = par_api.replace("-", "")
-            ativo = dados_json.get(chave_json)
-
-            if ativo:
-                status_texto = "Aberto" if mercado_aberto else "Fechado"
-
-                dados_mercado = (
-                    f"Ativo: {ativo.get('name', nome_ativo)} | "
-                    f"Status: {status_texto} | "
-                    f"Preço Atual (Bid): {ativo.get('bid', 'N/A')} | "
-                    f"Máxima: {ativo.get('high', 'N/A')} | "
-                    f"Mínima: {ativo.get('low', 'N/A')} | "
-                    f"Variação: {ativo.get('pctChange', 'N/A')}%"
-                )
-
-                prompt_ia = f"Gere o relatório analítico para os dados: {dados_mercado}"
-
-                await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-                resposta_ia = chamar_groq(prompt_ia, nome_usuario, modo_sinal=True, mercado_aberto=mercado_aberto)
-
-                await context.bot.send_message(chat_id=chat_id, text=resposta_ia, parse_mode="Markdown")
-            else:
-                await context.bot.send_message(chat_id=chat_id, text=f"⚠️ ATIVO *{nome_ativo.upper()}* NÃO LOCALIZADO.", parse_mode="Markdown")
+        if "BTC" in par_api or "ETH" in par_api:
+            moeda_id = "bitcoin" if "BTC" in par_api else "ethereum"
+            url_crypto = f"https://api.coingecko.com/api/v3/simple/price?ids={moeda_id}&vs_currencies=brl"
+            res = requests.get(url_crypto, timeout=10).json()
+            preco_atual = str(res.get(moeda_id, {}).get("brl", "N/A"))
+        elif "XAU" in par_api:
+            url_gold = "https://open.er-api.com/v6/latest/XAU"
+            res = requests.get(url_gold, timeout=10).json()
+            rates = res.get("rates", {})
+            preco_atual = str(rates.get("USD", "N/A"))
         else:
-            await context.bot.send_message(chat_id=chat_id, text="❌ FALHA NA CONEXÃO COM O PROVEDOR DE COTAÇÕES.")
+            moeda_base, moeda_alvo = par_api.split("-")
+            url_forex = f"https://open.er-api.com/v6/latest/{moeda_base}"
+            res = requests.get(url_forex, timeout=10).json()
+            rates = res.get("rates", {})
+            preco_atual = str(rates.get(moeda_alvo, "N/A"))
+
+        status_texto = "Aberto" if mercado_aberto else "Fechado"
+
+        dados_mercado = (
+            f"Ativo: {nome_ativo} | "
+            f"Status: {status_texto} | "
+            f"Preço Atual: {preco_atual}"
+        )
+
+        prompt_ia = f"Gere o relatório analítico para os dados: {dados_mercado}"
+
+        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+        resposta_ia = chamar_groq(prompt_ia, nome_usuario, modo_sinal=True, mercado_aberto=mercado_aberto)
+
+        await context.bot.send_message(chat_id=chat_id, text=resposta_ia, parse_mode="Markdown")
+
     except Exception as e:
-        await context.bot.send_message(chat_id=chat_id, text=f"❌ ERRO CRÍTICO: {e}")
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ FALHA NA CONEXÃO COM O PROVEDOR DE COTAÇÕES: {e}")
 
 # =========================
 # COMANDOS E INTERFACE DO TELEGRAM
@@ -185,7 +196,7 @@ async def enviar_menu_principal(update_or_query, context, nome_usuario):
     teclado = [
         [InlineKeyboardButton("📊 OPÇÕES BINÁRIAS (GERAL)", callback_data="menu_binarias")],
         [InlineKeyboardButton("💱 CÂMBIO (FOREX)", callback_data="menu_forex")],
-        [InlineKeyboardButton("� CRIPTOMOEDAS", callback_data="menu_cripto")],
+        [InlineKeyboardButton("🪙 CRIPTOMOEDAS", callback_data="menu_cripto")],
         [InlineKeyboardButton("🥇 METAIS & COMMODITIES", callback_data="menu_metais")],
         [InlineKeyboardButton("🔄 REDEFINIR NOME", callback_data="btn_reset")]
     ]
@@ -249,7 +260,7 @@ async def mostrar_menu_forex(query, nome_usuario):
 async def mostrar_menu_cripto(query, nome_usuario):
     teclado = [
         [
-            InlineKeyboardButton("� BTC/BRL", callback_data="btn_btc"),
+            InlineKeyboardButton("🪙 BTC/BRL", callback_data="btn_btc"),
             InlineKeyboardButton("🔷 ETH/BRL", callback_data="btn_eth")
         ],
         [
@@ -257,7 +268,7 @@ async def mostrar_menu_cripto(query, nome_usuario):
         ]
     ]
     reply_markup = InlineKeyboardMarkup(teclado)
-    await query.edit_message_text(f"� **CATEGORIA: CRIPTOMOEDAS**\n👤 *OPERADOR:* **{nome_usuario.upper()}**\n\nEscolha o ativo cripto:", reply_markup=reply_markup, parse_mode="Markdown")
+    await query.edit_message_text(f"🪙 **CATEGORIA: CRIPTOMOEDAS**\n👤 *OPERADOR:* **{nome_usuario.upper()}**\n\nEscolha o ativo cripto:", reply_markup=reply_markup, parse_mode="Markdown")
 
 async def mostrar_menu_metais(query, nome_usuario):
     teclado = [
@@ -408,6 +419,9 @@ def main():
     print("🚀 Iniciando o Snap Sinais Bot...", flush=True)
     request = HTTPXRequest(connection_pool_size=20, connect_timeout=60, read_timeout=60)
     app = Application.builder().token(TOKEN).request(request).build()
+
+    # REGISTRO DO TRATADOR DE ERROS
+    app.add_error_handler(erro_handler)
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(botao_clicado))
