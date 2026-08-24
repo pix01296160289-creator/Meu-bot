@@ -42,19 +42,25 @@ async def erro_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     print(f"❌ ERRO CAPTURADO NO BOT: {context.error}", flush=True)
 
 # =========================
-# MAPA DOS 10 PRINCIPAIS ATIVOS
+# MAPA COMPLETO DE ATIVOS (10 PARES DE MOEDAS + CRIPTO + OURO)
 # =========================
 MAPA_ATIVOS = {
-    "eurusd": {"par_api": "EUR-USD", "nome": "EUR/USD (Binária M5)", "multiplicador": 10000},
-    "gbpusd": {"par_api": "GBP-USD", "nome": "GBP/USD (Binária M5)", "multiplicador": 10000},
-    "usdjpy": {"par_api": "USD-JPY", "nome": "USD/JPY (Binária M5)", "multiplicador": 100},
-    "audusd": {"par_api": "AUD-USD", "nome": "AUD/USD (Binária M5)", "multiplicador": 10000},
-    "usdbrl": {"par_api": "USD-BRL", "nome": "Dólar / Real (USD/BRL)", "multiplicador": 10000},
-    "gbpbrl": {"par_api": "GBP-BRL", "nome": "Libra / Real (GBP/BRL)", "multiplicador": 10000},
-    "eurbrl": {"par_api": "EUR-BRL", "nome": "Euro / Real (EUR/BRL)", "multiplicador": 10000},
-    "btc": {"par_api": "BTC-BRL", "nome": "Bitcoin / Real (BTC/BRL)", "multiplicador": 1},
-    "eth": {"par_api": "ETH-BRL", "nome": "Ethereum / Real (ETH/BRL)", "multiplicador": 1},
-    "xau": {"par_api": "XAU-USD", "nome": "Ouro / Dólar (XAU/USD)", "multiplicador": 10}
+    # 10 Pares de Moedas Principais
+    "eurusd": {"par_api": "EUR-USD", "nome": "EUR/USD (Binária M5)", "multiplicador": 10000, "limite_variacao": 8.0},
+    "gbpusd": {"par_api": "GBP-USD", "nome": "GBP/USD (Binária M5)", "multiplicador": 10000, "limite_variacao": 10.0},
+    "usdjpy": {"par_api": "USD-JPY", "nome": "USD/JPY (Binária M5)", "multiplicador": 100, "limite_variacao": 15.0},
+    "audusd": {"par_api": "AUD-USD", "nome": "AUD/USD (Binária M5)", "multiplicador": 10000, "limite_variacao": 8.0},
+    "nzdusd": {"par_api": "NZD-USD", "nome": "NZD/USD (Binária M5)", "multiplicador": 10000, "limite_variacao": 8.0},
+    "usdcad": {"par_api": "USD-CAD", "nome": "USD/CAD (Binária M5)", "multiplicador": 10000, "limite_variacao": 8.0},
+    "usdchf": {"par_api": "USD-CHF", "nome": "USD/CHF (Binária M5)", "multiplicador": 10000, "limite_variacao": 8.0},
+    "usdbrl": {"par_api": "USD-BRL", "nome": "Dólar / Real (USD/BRL)", "multiplicador": 10000, "limite_variacao": 15.0},
+    "gbpbrl": {"par_api": "GBP-BRL", "nome": "Libra / Real (GBP/BRL)", "multiplicador": 10000, "limite_variacao": 20.0},
+    "eurbrl": {"par_api": "EUR-BRL", "nome": "Euro / Real (EUR/BRL)", "multiplicador": 10000, "limite_variacao": 20.0},
+    
+    # Cripto e Metais
+    "btc": {"par_api": "BTC-BRL", "nome": "Bitcoin / Real (BTC/BRL)", "multiplicador": 1, "limite_variacao": 500.0},
+    "eth": {"par_api": "ETH-BRL", "nome": "Ethereum / Real (ETH/BRL)", "multiplicador": 1, "limite_variacao": 150.0},
+    "xau": {"par_api": "XAU-USD", "nome": "Ouro / Dólar (XAU/USD)", "multiplicador": 10, "limite_variacao": 25.0}
 }
 
 # =========================
@@ -89,6 +95,9 @@ def obter_preco_atual(par_api):
             "GBP-USD": "GBPUSD=X",
             "USD-JPY": "USDJPY=X",
             "AUD-USD": "AUDUSD=X",
+            "NZD-USD": "NZDUSD=X",
+            "USD-CAD": "USDCAD=X",
+            "USD-CHF": "USDCHF=X",
             "USD-BRL": "USDBRL=X",
             "GBP-BRL": "GBPBRL=X",
             "EUR-BRL": "EURBRL=X",
@@ -206,7 +215,7 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, par_api, nome
     await context.bot.send_message(chat_id=chat_id, text=resposta_ia, parse_mode="Markdown")
 
 # =========================
-# MONITOR DE VARIAÇÃO RÁPIDA (MULTIATVOS)
+# MONITOR DE VARIAÇÃO RÁPIDA
 # =========================
 async def monitorar_variacao_mercado(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
@@ -215,6 +224,7 @@ async def monitorar_variacao_mercado(context: ContextTypes.DEFAULT_TYPE):
     par_api = job.data.get("par_api", "EUR-USD")
     nome_ativo = job.data.get("nome_ativo", "EUR/USD")
     multiplicador = job.data.get("multiplicador", 10000)
+    limite_disparo = job.data.get("limite_variacao", 10.0)
 
     if not hasattr(job, "ultimo_preco"):
         job.ultimo_preco = None
@@ -227,15 +237,13 @@ async def monitorar_variacao_mercado(context: ContextTypes.DEFAULT_TYPE):
         diferenca = preco_atual - job.ultimo_preco
         unidades = abs(diferenca) * multiplicador
 
-        limite_disparo = 5.0 if multiplicador >= 1000 else 50.0
-
         if unidades >= limite_disparo:
             direcao_movimento = "⚡ ALTA FORTE (SPIKE COMPRADOR)" if diferenca > 0 else "⚡ QUEDA FORTE (SPIKE VENDEDOR)"
             
             alerta_texto = (
                 f"🚨 **ALERTA DE VARIAÇÃO RÁPIDA - {nome_ativo}** 🚨\n\n"
                 f"• **Movimento:** {direcao_movimento}\n"
-                f"• **Variação detectada!**\n"
+                f"• **Variação detectada:** `{unidades:.1f}` pontos\n"
                 f"• **Preço Atual:** `{preco_atual:.5f}`\n\n"
                 f"💡 *O mercado esticou rápido! Analisando oportunidade imediata...*"
             )
@@ -278,7 +286,8 @@ async def comando_alertar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "nome": nome_usuario, 
             "par_api": info["par_api"], 
             "nome_ativo": info["nome"],
-            "multiplicador": info["multiplicador"]
+            "multiplicador": info["multiplicador"],
+            "limite_variacao": info["limite_variacao"]
         }
         
         context.job_queue.run_repeating(
@@ -293,7 +302,7 @@ async def comando_alertar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"🔔 *MONITOR DE VARIAÇÃO ATIVADO!*\n\n"
             f"Monitorando **{info['nome']}** a cada **{minutos} minuto(s)**.\n"
-            f"Se houver pico brusco, você será avisado na hora!\n"
+            f"Sensibilidade de disparo ajustada para este ativo.\n"
             f"Para desativar, digite `/alertar` sem parâmetros.",
             parse_mode="Markdown"
         )
@@ -321,9 +330,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def enviar_menu_principal(update_or_query, context, nome_usuario):
     teclado = [
         [InlineKeyboardButton("📊 OPÇÕES BINÁRIAS (M5)", callback_data="menu_binarias")],
-        [InlineKeyboardButton("💱 CÂMBIO (FOREX)", callback_data="menu_forex")],
-        [InlineKeyboardButton("🪙 CRIPTOMOEDAS", callback_data="menu_cripto")],
-        [InlineKeyboardButton("🥇 METAIS & COMMODITIES", callback_data="menu_metais")]
+        [InlineKeyboardButton("💱 CÂMBIO & REAIS", callback_data="menu_forex")],
+        [InlineKeyboardButton("🪙 CRIPTOMOEDAS & METAIS", callback_data="menu_cripto")]
     ]
     reply_markup = InlineKeyboardMarkup(teclado)
 
@@ -344,42 +352,52 @@ async def enviar_menu_principal(update_or_query, context, nome_usuario):
 async def mostrar_menu_binarias(query, nome_usuario):
     teclado = [
         [
-            InlineKeyboardButton("💶 EUR/USD (Binária M5)", callback_data="btn_bin_eurusd"),
-            InlineKeyboardButton("💷 GBP/USD (Binária M5)", callback_data="btn_bin_gbpusd")
+            InlineKeyboardButton("💶 EUR/USD", callback_data="btn_eurusd"),
+            InlineKeyboardButton("💷 GBP/USD", callback_data="btn_gbpusd")
         ],
         [
-            InlineKeyboardButton("💵 USD/JPY (Binária M5)", callback_data="btn_bin_usdjpy"),
-            InlineKeyboardButton("📉 AUD/USD (Binária M5)", callback_data="btn_bin_audusd")
+            InlineKeyboardButton("💵 USD/JPY", callback_data="btn_usdjpy"),
+            InlineKeyboardButton("📉 AUD/USD", callback_data="btn_audusd")
         ],
-        [InlineKeyboardButton("⬅️ VOLTAR AO MENU PRINCIPAL", callback_data="menu_principal")]
+        [
+            InlineKeyboardButton("🇳🇿 NZD/USD", callback_data="btn_nzdusd"),
+            InlineKeyboardButton("🇨🇦 USD/CAD", callback_data="btn_usdcad")
+        ],
+        [
+            InlineKeyboardButton("🇨🇭 USD/CHF", callback_data="btn_usdchf"),
+            InlineKeyboardButton("🌐 VOLTAR", callback_data="menu_principal")
+        ]
     ]
     reply_markup = InlineKeyboardMarkup(teclado)
-    await query.edit_message_text(f"📊 **OPÇÕES BINÁRIAS (M5)**\nEscolha o ativo para análise:", reply_markup=reply_markup, parse_mode="Markdown")
+    await query.edit_message_text(f"📊 **PARES PRINCIPAIS DE FOREX / BINÁRIAS (M5)**\nEscolha o ativo:", reply_markup=reply_markup, parse_mode="Markdown")
 
 async def mostrar_menu_forex(query, nome_usuario):
     teclado = [
-        [InlineKeyboardButton("💵 USD/BRL", callback_data="btn_usdbrl"), InlineKeyboardButton("💶 EUR/USD", callback_data="btn_eurusd")],
-        [InlineKeyboardButton("💷 GBP/BRL", callback_data="btn_gbpbrl"), InlineKeyboardButton("🇪🇺 EUR/BRL", callback_data="btn_eurbrl")],
-        [InlineKeyboardButton("⬅️ VOLTAR AO MENU PRINCIPAL", callback_data="menu_principal")]
+        [
+            InlineKeyboardButton("💵 USD/BRL", callback_data="btn_usdbrl"),
+            InlineKeyboardButton("💷 GBP/BRL", callback_data="btn_gbpbrl")
+        ],
+        [
+            InlineKeyboardButton("💶 EUR/BRL", callback_data="btn_eurbrl"),
+            InlineKeyboardButton("⬅️ VOLTAR", callback_data="menu_principal")
+        ]
     ]
     reply_markup = InlineKeyboardMarkup(teclado)
-    await query.edit_message_text(f"💱 **CÂMBIO (FOREX)**", reply_markup=reply_markup, parse_mode="Markdown")
+    await query.edit_message_text(f"💱 **CÂMBIO CONTRA O REAL (BRL)**", reply_markup=reply_markup, parse_mode="Markdown")
 
 async def mostrar_menu_cripto(query, nome_usuario):
     teclado = [
-        [InlineKeyboardButton("🪙 BTC/BRL", callback_data="btn_btc"), InlineKeyboardButton("🔷 ETH/BRL", callback_data="btn_eth")],
-        [InlineKeyboardButton("⬅️ VOLTAR AO MENU PRINCIPAL", callback_data="menu_principal")]
+        [
+            InlineKeyboardButton("🪙 BTC/BRL", callback_data="btn_btc"),
+            InlineKeyboardButton("🔷 ETH/BRL", callback_data="btn_eth")
+        ],
+        [
+            InlineKeyboardButton("🥇 OURO (XAU/USD)", callback_data="btn_xau"),
+            InlineKeyboardButton("⬅️ VOLTAR", callback_data="menu_principal")
+        ]
     ]
     reply_markup = InlineKeyboardMarkup(teclado)
-    await query.edit_message_text(f"🪙 **CRIPTOMOEDAS**", reply_markup=reply_markup, parse_mode="Markdown")
-
-async def mostrar_menu_metais(query, nome_usuario):
-    teclado = [
-        [InlineKeyboardButton("🥇 OURO (XAU/USD)", callback_data="btn_xau")],
-        [InlineKeyboardButton("⬅️ VOLTAR AO MENU PRINCIPAL", callback_data="menu_principal")]
-    ]
-    reply_markup = InlineKeyboardMarkup(teclado)
-    await query.edit_message_text(f"🥇 **METAIS**", reply_markup=reply_markup, parse_mode="Markdown")
+    await query.edit_message_text(f"🪙 **CRIPTOMOEDAS E METAIS**", reply_markup=reply_markup, parse_mode="Markdown")
 
 async def botao_clicado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -397,27 +415,28 @@ async def botao_clicado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await mostrar_menu_forex(query, nome_usuario)
     elif data == "menu_cripto":
         await mostrar_menu_cripto(query, nome_usuario)
-    elif data == "menu_metais":
-        await mostrar_menu_metais(query, nome_usuario)
 
-    elif data == "btn_bin_eurusd":
-        await executar_analise_mercado(chat_id, context, nome_usuario, "EUR-USD", "EUR/USD (Opções Binárias)")
-    elif data == "btn_bin_gbpusd":
-        await executar_analise_mercado(chat_id, context, nome_usuario, "GBP-USD", "GBP/USD (Opções Binárias)")
-    elif data == "btn_bin_usdjpy":
-        await executar_analise_mercado(chat_id, context, nome_usuario, "USD-JPY", "USD/JPY (Opções Binárias)")
-    elif data == "btn_bin_audusd":
-        await executar_analise_mercado(chat_id, context, nome_usuario, "AUD-USD", "AUD/USD (Opções Binárias)")
-
-    elif data == "btn_usdbrl":
-        await executar_analise_mercado(chat_id, context, nome_usuario, "USD-BRL", "Dólar / Real (USD/BRL)")
+    # Mapeamento dos botões para execução direta
     elif data == "btn_eurusd":
-        await executar_analise_mercado(chat_id, context, nome_usuario, "EUR-USD", "Euro / Dólar (EUR/USD)")
+        await executar_analise_mercado(chat_id, context, nome_usuario, "EUR-USD", "EUR/USD")
+    elif data == "btn_gbpusd":
+        await executar_analise_mercado(chat_id, context, nome_usuario, "GBP-USD", "GBP/USD")
+    elif data == "btn_usdjpy":
+        await executar_analise_mercado(chat_id, context, nome_usuario, "USD-JPY", "USD/JPY")
+    elif data == "btn_audusd":
+        await executar_analise_mercado(chat_id, context, nome_usuario, "AUD-USD", "AUD/USD")
+    elif data == "btn_nzdusd":
+        await executar_analise_mercado(chat_id, context, nome_usuario, "NZD-USD", "NZD/USD")
+    elif data == "btn_usdcad":
+        await executar_analise_mercado(chat_id, context, nome_usuario, "USD-CAD", "USD/CAD")
+    elif data == "btn_usdchf":
+        await executar_analise_mercado(chat_id, context, nome_usuario, "USD-CHF", "USD/CHF")
+    elif data == "btn_usdbrl":
+        await executar_analise_mercado(chat_id, context, nome_usuario, "USD-BRL", "USD/BRL")
     elif data == "btn_gbpbrl":
-        await executar_analise_mercado(chat_id, context, nome_usuario, "GBP-BRL", "Libra / Real (GBP/BRL)")
+        await executar_analise_mercado(chat_id, context, nome_usuario, "GBP-BRL", "GBP/BRL")
     elif data == "btn_eurbrl":
-        await executar_analise_mercado(chat_id, context, nome_usuario, "EUR-BRL", "Euro / Real (EUR/BRL)")
-
+        await executar_analise_mercado(chat_id, context, nome_usuario, "EUR-BRL", "EUR/BRL")
     elif data == "btn_btc":
         await executar_analise_mercado(chat_id, context, nome_usuario, "BTC-BRL", "Bitcoin / Real (BTC/BRL)")
     elif data == "btn_eth":
@@ -444,14 +463,14 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     contem_cotacao = any(palavra in texto_usuario for palavra in PALAVRAS_COTACAO)
 
     if contem_sinal or contem_cotacao:
-        if "dólar" in texto_usuario or "usd" in texto_usuario:
-            await executar_analise_mercado(chat_id, context, nome_usuario, "USD-BRL", "Dólar / Real (USD/BRL)")
+        if "dólar" in texto_usuario or "usdbrl" in texto_usuario:
+            await executar_analise_mercado(chat_id, context, nome_usuario, "USD-BRL", "USD/BRL")
             return
         elif "bitcoin" in texto_usuario or "btc" in texto_usuario:
             await executar_analise_mercado(chat_id, context, nome_usuario, "BTC-BRL", "Bitcoin / Real (BTC/BRL)")
             return
         elif "euro" in texto_usuario or "eur" in texto_usuario:
-            await executar_analise_mercado(chat_id, context, nome_usuario, "EUR-USD", "Euro / Dólar (EUR/USD)")
+            await executar_analise_mercado(chat_id, context, nome_usuario, "EUR-USD", "EUR/USD")
             return
         else:
             await context.bot.send_message(chat_id=chat_id, text="🔍 *ATIVO NÃO IDENTIFICADO.*", parse_mode="Markdown")
@@ -480,6 +499,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
