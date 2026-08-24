@@ -10,14 +10,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
 
-# Importação corrigida para evitar incompatibilidade no Python 3.13
-try:
-    from iqoptionapi.stable_api import IQ_Option
-except ImportError:
-    try:
-        from iqoptionapi.api import IQ_Option
-    except ImportError:
-        from iqoptionapi import IQ_Option
+# Importação oficial correta da IQ Option
+from iqoptionapi.stable_api import IQ_Option
 
 # =========================
 # CONFIGURAÇÃO E CHAVES (.env)
@@ -433,6 +427,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
