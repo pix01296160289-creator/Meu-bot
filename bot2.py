@@ -4,6 +4,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 import requests
+import yfinance as yf
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
@@ -63,28 +64,50 @@ def verificar_status_mercado(par_api):
     return True, f"🟢 **MERCADO ABERTO**\n📅 *DATA/HORA (BR):* {data_formatada}"
 
 # =========================
-# FUNÇÃO PARA OBTER PREÇO REAL DA API (SEM CACHE)
+# FUNÇÃO PARA OBTER PREÇO REAL E DINÂMICO VIA YAHOO FINANCE
 # =========================
 def obter_preco_atual(par_api):
     try:
-        if "BTC" in par_api or "ETH" in par_api:
-            moeda_id = "bitcoin" if "BTC" in par_api else "ethereum"
-            url_crypto = f"https://api.coingecko.com/api/v3/simple/price?ids={moeda_id}&vs_currencies=brl"
-            res = requests.get(url_crypto, timeout=10).json()
-            return float(res.get(moeda_id, {}).get("brl", 0.0))
-        elif "XAU" in par_api:
-            url_gold = "https://open.er-api.com/v6/latest/XAU?_t=" + str(datetime.now().timestamp())
-            res = requests.get(url_gold, timeout=10).json()
-            rates = res.get("rates", {})
-            return float(rates.get("USD", 0.0))
+        # Mapeamento dos pares para o formato do Yahoo Finance (=X para forex, -USD para cripto, etc)
+        ticker_map = {
+            "EUR-USD": "EURUSD=X",
+            "GBP-USD": "GBPUSD=X",
+            "USD-JPY": "USDJPY=X",
+            "AUD-USD": "AUDUSD=X",
+            "USD-BRL": "USDBRL=X",
+            "GBP-BRL": "GBPBRL=X",
+            "EUR-BRL": "EURBRL=X",
+            "BTC-BRL": "BTC-BRL",
+            "ETH-BRL": "ETH-BRL",
+            "XAU-USD": "GC=F"  # Contrato futuro de Ouro
+        }
+
+        ticker_symbol = ticker_map.get(par_api)
+        if not ticker_symbol:
+            return 0.0
+
+        # Baixa os dados recentes do ativo (últimos minutos/dia atual)
+        dados = yf.download(ticker_symbol, period="1d", interval="1m", progress=False)
+        
+        if not dados.empty and "Close" in dados.columns:
+            # Pega o último preço fechado da série temporal obtida
+            preco_recente = dados["Close"].iloc[-1]
+            if hasattr(preco_recente, "item"):
+                preco_recente = preco_recente.item()
+            return float(preco_recente)
         else:
-            moeda_base, moeda_alvo = par_api.split("-")
-            url_forex = f"https://open.er-api.com/v6/latest/{moeda_base}?_t=" + str(datetime.now().timestamp())
-            res = requests.get(url_forex, timeout=10).json()
-            rates = res.get("rates", {})
-            return float(rates.get(moeda_alvo, 0.0))
+            # Fallback caso o intervalo de 1m venha vazio
+            ticker_obj = yf.Ticker(ticker_symbol)
+            hist = ticker_obj.history(period="1d")
+            if not hist.empty:
+                preco_recente = hist["Close"].iloc[-1]
+                if hasattr(preco_recente, "item"):
+                    preco_recente = preco_recente.item()
+                return float(preco_recente)
+
+        return 0.0
     except Exception as e:
-        print(f"❌ Erro ao buscar preço: {e}", flush=True)
+        print(f"❌ Erro ao buscar preço no Yahoo Finance: {e}", flush=True)
         return 0.0
 
 # =========================
@@ -107,11 +130,11 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
                 f"🎯 **SINAL DE ANÁLISE - [NOME DO ATIVO]**\n"
                 f"• **Status:** Mercado Aberto 🟢\n"
                 f"• **Tendência:** [Alta / Baixa / Lateral]\n"
-                f"• **Preço Atual:** [Valor]\n\n"
+                f"• **Preço Atual:** [Valor exato fornecido]\n\n"
                 f"⏱️ **OPÇÃO BINÁRIA (EXPIRAÇÃO):**\n"
                 f"• **Tempo:** [Ex: M5 - 5 Minutos]\n"
                 f"• **Direção:** [CALL 🟢 (Compra) / PUT 🔴 (Venda)]\n"
-                f"• **Ponto de Entrada:** [Preço ideal]\n\n"
+                f"• **Ponto de Entrada:** [Preço ideal baseado no preço atual]\n\n"
                 f"💡 *[Recomendação prática curta]*"
             )
         else:
@@ -153,17 +176,17 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, par_api, nome
     await context.bot.send_message(chat_id=chat_id, text=f"🔍 *CONSULTANDO TERMINAIS PARA {nome_ativo.upper()}...*\n\n{info_status}", parse_mode="Markdown")
 
     preco_atual_val = obter_preco_atual(par_api)
-    preco_atual_str = str(preco_atual_val) if preco_atual_val > 0 else "N/A"
+    preco_atual_str = f"{preco_atual_val:.5f}" if preco_atual_val > 0 else "N/A"
 
     status_texto = "Aberto 🟢" if mercado_aberto else "Fechado 🔴"
 
     dados_mercado = (
         f"Ativo: {nome_ativo} | "
         f"Status do Mercado: {status_texto} | "
-        f"Preço Real Obtido: {preco_atual_str}"
+        f"Preço Real Obtido agora: {preco_atual_str}"
     )
 
-    prompt_ia = f"Gere o relatório analítico ou de fechamento para os dados reais: {dados_mercado}"
+    prompt_ia = f"Gere o relatório analítico ou de fechamento para os dados reais: {dados_mercado}. Utilize obrigatoriamente o Preço Real Obtido informado."
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
     resposta_ia = chamar_groq(prompt_ia, nome_usuario, modo_sinal=True, mercado_aberto=mercado_aberto)
@@ -349,4 +372,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
+
