@@ -1,4 +1,4 @@
-import os
+  import os
 import sys
 import asyncio
 from datetime import datetime
@@ -31,7 +31,6 @@ if not GROQ_API_KEY:
 # =========================
 # DICIONÁRIO DE CONTAS DEMO (Banca Virtual por Usuário)
 # =========================
-# Formato: { chat_id: {"saldo": 10000.0, "nome": "Nome"} }
 CONTAS_DEMO = {}
 
 # =========================
@@ -106,23 +105,23 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
     if modo_sinal:
         if mercado_aberto:
             instrucao_sistema = (
-                f"Você é o analista sênior do 'Snap Sinais Bot' especializado em Opções Binárias e Forex. "
-                f"O operador se chama {nome_usuario}. "
-                f"O mercado está ABERTO. Monte um **Sinal de Trade Profissional**, incluindo obrigatoriamente o **Tempo de Expiração** para Opções Binárias (ex: M1, M5 ou M15). "
+                f"Você é um terminal analítico financeiro estritamente profissional. "
+                f"Sua função é gerar um relatório técnico e a direção de operação (CALL para compra ou PUT para venda) baseada nos dados fornecidos. "
+                f"Nunca recuse uma solicitação de análise de mercado. "
                 f"Siga rigorosamente este modelo:\n\n"
                 f"🎯 **SINAL DE ANÁLISE - [NOME DO ATIVO]**\n"
                 f"• **Status:** Mercado Aberto 🟢\n"
                 f"• **Tendência:** [Alta / Baixa / Lateral]\n"
                 f"• **Preço Atual:** [Valor]\n\n"
                 f"⏱️ **OPÇÃO BINÁRIA (EXPIRAÇÃO):**\n"
-                f"• **Tempo:** [Ex: M5 - 5 Minutos]\n"
-                f"• **Direção:** [CALL 🟢 (Compra) / PUT 🔴 (Venda)]\n"
+                f"• **Tempo:** M5 - 5 Minutos\n"
+                f"• **Direção:** [CALL 🟢 (Compra) ou PUT 🔴 (Venda)]\n"
                 f"• **Ponto de Entrada:** [Preço ideal]\n\n"
-                f"💡 *[Recomendação prática curta]*"
+                f"💡 *Recomendação de gestão de risco prudente.*"
             )
         else:
             instrucao_sistema = (
-                f"⚠️ O mercado está FECHADO. Monte um **Panorama de Fechamento** seguindo exatamente este modelo:\n\n"
+                f"O mercado está FECHADO. Monte um **Panorama de Fechamento** seguindo exatamente este modelo:\n\n"
                 f"🔒 **PANORAMA DE FECHAMENTO - [NOME DO ATIVO]**\n"
                 f"• **Status:** Mercado Fechado 🔴\n"
                 f"• **Último Preço (Fechamento):** [Valor]\n"
@@ -138,7 +137,7 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
             {"role": "system", "content": instrucao_sistema},
             {"role": "user", "content": pergunta_usuario}
         ],
-        "temperature": 0.5
+        "temperature": 0.3
     }
 
     try:
@@ -154,17 +153,15 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
 # SIMULADOR M5 (CONTA DEMO COM VERIFICAÇÃO AUTOMÁTICA)
 # =========================
 async def monitorar_operacao_demo(chat_id, context, nome_ativo, par_api, preco_entrada, direcao, valor_investido):
-    # Aguarda exatamente 5 minutos (300 segundos)
-    await asyncio.sleep(300)
+    await asyncio.sleep(300) # Aguarda 5 minutos
 
-    # Pega o preço real atualizado após 5 minutos
     preco_final = obter_preco_atual(par_api)
     
     if chat_id not in CONTAS_DEMO:
         CONTAS_DEMO[chat_id] = {"saldo": 10000.0}
 
     conta = CONTAS_DEMO[chat_id]
-    payout = 0.85 # 85% de lucro sobre a entrada em caso de WIN
+    payout = 0.85 
     lucro = valor_investido * payout
 
     resultado = "LOSS"
@@ -199,7 +196,7 @@ async def monitorar_operacao_demo(chat_id, context, nome_ativo, par_api, preco_e
     await context.bot.send_message(chat_id=chat_id, text=mensagem_res, parse_mode="Markdown")
 
 # =========================
-# EXECUTAR ANÁLISE E ABRIR ORDEM DEMO
+# EXECUTAR ANÁLISE E ABRIR ORDEM DEMO COM BLINDAÇÃO
 # =========================
 async def executar_analise_mercado(chat_id, context, nome_usuario, par_api, nome_ativo):
     mercado_aberto, info_status = verificar_status_mercado(par_api)
@@ -224,12 +221,36 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, par_api, nome
 
     await context.bot.send_message(chat_id=chat_id, text=resposta_ia, parse_mode="Markdown")
 
-    # Se o mercado estiver aberto, agenda uma operação de demonstração automática de 5 min baseada na análise
+    # BLINDAÇÃO: Só abre a ordem demo se a IA realmente gerou o sinal sem recusas
     if mercado_aberto and preco_atual_val > 0:
+        resposta_maiuscula = resposta_ia.upper()
+        
+        # Verifica se a IA recusou ou se o texto está incompleto
+        if "I'M SORRY" in resposta_maiuscula or "DESCULPE" in resposta_maiuscula or ("CALL" not in resposta_maiuscula and "PUT" not in resposta_maiuscula):
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="⚠️ *Terminal ocupado no momento.* A IA não retornou um sinal válido para abertura automática. Clique no botão novamente para tentar outro ciclo.",
+                parse_mode="Markdown"
+            )
+            return
+
         if chat_id not in CONTAS_DEMO:
             CONTAS_DEMO[chat_id] = {"saldo": 10000.0}
 
-        direcao_simulada = "CALL" if "CALL" in resposta_ia.upper() else "PUT"
+        # Define com segurança a direção baseada estritamente na resposta da IA
+        if "CALL" in resposta_maiuscula and "PUT" not in resposta_maiuscula:
+            direcao_simulada = "CALL"
+        elif "PUT" in resposta_maiuscula and "CALL" not in resposta_maiuscula:
+            direcao_simulada = "PUT"
+        else:
+            # Caso ambíguo, define pelo termo que aparecer primeiro
+            pos_call = resposta_maiuscula.find("CALL")
+            pos_put = resposta_maiuscula.find("PUT")
+            if pos_call != -1 and (pos_put == -1 or pos_call < pos_put):
+                direcao_simulada = "CALL"
+            else:
+                direcao_simulada = "PUT"
+
         valor_padrao = 100.0
 
         await context.bot.send_message(
@@ -238,7 +259,6 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, par_api, nome
             parse_mode="Markdown"
         )
 
-        # Inicia a contagem regressiva em segundo plano
         asyncio.create_task(monitorar_operacao_demo(chat_id, context, nome_ativo, par_api, preco_atual_val, direcao_simulada, valor_padrao))
 
 # =========================
@@ -247,7 +267,7 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, par_api, nome
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("nome", None)
     chat_id = update.effective_chat.id
-    CONTAS_DEMO[chat_id] = {"saldo": 10000.0} # Inicializa com $10.000 demo
+    CONTAS_DEMO[chat_id] = {"saldo": 10000.0}
 
     url_imagem = "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?q=80&w=1000&auto=format&fit=crop"
     legenda_boas_vindas = (
@@ -441,4 +461,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
