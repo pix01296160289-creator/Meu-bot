@@ -10,6 +10,9 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
 
+# Importa as funções do nosso arquivo separado da IQ Option
+from iq_integration import conectar_iq_option, executar_ordem_iq
+
 # =========================
 # CONFIGURAÇÃO E CHAVES (.env)
 # =========================
@@ -29,6 +32,9 @@ if not GROQ_API_KEY:
     print("❌ ERRO: A chave GROQ_API_KEY não foi encontrada!", flush=True)
     sys.exit(1)
 
+# Tenta conectar na IQ Option em segundo plano ao iniciar o bot
+conectar_iq_option()
+
 # =========================
 # LISTAS DE PALAVRAS-CHAVE
 # =========================
@@ -46,19 +52,19 @@ async def erro_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 # MAPA COMPLETO DE ATIVOS
 # =========================
 MAPA_ATIVOS = {
-    "eurusd": {"par_api": "EUR-USD", "nome": "EUR/USD (Binária M5)", "multiplicador": 10000, "limite_variacao": 8.0},
-    "gbpusd": {"par_api": "GBP-USD", "nome": "GBP/USD (Binária M5)", "multiplicador": 10000, "limite_variacao": 10.0},
-    "usdjpy": {"par_api": "USD-JPY", "nome": "USD/JPY (Binária M5)", "multiplicador": 100, "limite_variacao": 15.0},
-    "audusd": {"par_api": "AUD-USD", "nome": "AUD/USD (Binária M5)", "multiplicador": 10000, "limite_variacao": 8.0},
-    "nzdusd": {"par_api": "NZD-USD", "nome": "NZD/USD (Binária M5)", "multiplicador": 10000, "limite_variacao": 8.0},
-    "usdcad": {"par_api": "USD-CAD", "nome": "USD/CAD (Binária M5)", "multiplicador": 10000, "limite_variacao": 8.0},
-    "usdchf": {"par_api": "USD-CHF", "nome": "USD/CHF (Binária M5)", "multiplicador": 10000, "limite_variacao": 8.0},
-    "usdbrl": {"par_api": "USD-BRL", "nome": "Dólar / Real (USD/BRL)", "multiplicador": 10000, "limite_variacao": 15.0},
-    "gbpbrl": {"par_api": "GBP-BRL", "nome": "Libra / Real (GBP/BRL)", "multiplicador": 10000, "limite_variacao": 20.0},
-    "eurbrl": {"par_api": "EUR-BRL", "nome": "Euro / Real (EUR/BRL)", "multiplicador": 10000, "limite_variacao": 20.0},
-    "btc": {"par_api": "BTC-BRL", "nome": "Bitcoin / Real (BTC/BRL)", "multiplicador": 1, "limite_variacao": 500.0},
-    "eth": {"par_api": "ETH-BRL", "nome": "Ethereum / Real (ETH/BRL)", "multiplicador": 1, "limite_variacao": 150.0},
-    "xau": {"par_api": "XAU-USD", "nome": "Ouro / Dólar (XAU/USD)", "multiplicador": 10, "limite_variacao": 25.0}
+    "eurusd": {"par_api": "EUR-USD", "iq_symbol": "EURUSD", "nome": "EUR/USD (Binária M5)", "multiplicador": 10000, "limite_variacao": 8.0},
+    "gbpusd": {"par_api": "GBP-USD", "iq_symbol": "GBPUSD", "nome": "GBP/USD (Binária M5)", "multiplicador": 10000, "limite_variacao": 10.0},
+    "usdjpy": {"par_api": "USD-JPY", "iq_symbol": "USDJPY", "nome": "USD/JPY (Binária M5)", "multiplicador": 100, "limite_variacao": 15.0},
+    "audusd": {"par_api": "AUD-USD", "iq_symbol": "AUDUSD", "nome": "AUD/USD (Binária M5)", "multiplicador": 10000, "limite_variacao": 8.0},
+    "nzdusd": {"par_api": "NZD-USD", "iq_symbol": "NZDUSD", "nome": "NZD/USD (Binária M5)", "multiplicador": 10000, "limite_variacao": 8.0},
+    "usdcad": {"par_api": "USD-CAD", "iq_symbol": "USDCAD", "nome": "USD/CAD (Binária M5)", "multiplicador": 10000, "limite_variacao": 8.0},
+    "usdchf": {"par_api": "USD-CHF", "iq_symbol": "USDCHF", "nome": "USD/CHF (Binária M5)", "multiplicador": 10000, "limite_variacao": 8.0},
+    "usdbrl": {"par_api": "USD-BRL", "iq_symbol": "USDBRL", "nome": "Dólar / Real (USD/BRL)", "multiplicador": 10000, "limite_variacao": 15.0},
+    "gbpbrl": {"par_api": "GBP-BRL", "iq_symbol": "GBPBRL", "nome": "Libra / Real (GBP/BRL)", "multiplicador": 10000, "limite_variacao": 20.0},
+    "eurbrl": {"par_api": "EUR-BRL", "iq_symbol": "EURBRL", "nome": "Euro / Real (EUR/BRL)", "multiplicador": 10000, "limite_variacao": 20.0},
+    "btc": {"par_api": "BTC-BRL", "iq_symbol": "BTCBRL", "nome": "Bitcoin / Real (BTC/BRL)", "multiplicador": 1, "limite_variacao": 500.0},
+    "eth": {"par_api": "ETH-BRL", "iq_symbol": "ETHBRL", "nome": "Ethereum / Real (ETH/BRL)", "multiplicador": 1, "limite_variacao": 150.0},
+    "xau": {"par_api": "XAU-USD", "iq_symbol": "XAUUSD", "nome": "Ouro / Dólar (XAU/USD)", "multiplicador": 10, "limite_variacao": 25.0}
 }
 
 # =========================
@@ -177,9 +183,9 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
         return f"❌ Erro de conexão com a Groq: {e}"
 
 # =========================
-# EXECUTAR ANÁLISE DE MERCADO
+# EXECUTAR ANÁLISE E ORDEM AUTOMÁTICA
 # =========================
-async def executar_analise_mercado(chat_id, context, nome_usuario, sigla_chave, par_api, nome_ativo):
+async def executar_analise_mercado(chat_id, context, nome_usuario, sigla_chave, par_api, nome_ativo, iq_symbol):
     mercado_aberto, info_status = verificar_status_mercado(par_api)
 
     await context.bot.send_message(
@@ -216,6 +222,11 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, sigla_chave, 
 
     await context.bot.send_message(chat_id=chat_id, text=resposta_ia, parse_mode="Markdown")
 
+    # Se o mercado estiver aberto, dispara a ordem automática na IQ Option
+    if mercado_aberto:
+        resultado_corretora = executar_ordem_iq(iq_symbol, resposta_ia)
+        await context.bot.send_message(chat_id=chat_id, text=resultado_corretora, parse_mode="Markdown")
+
 # =========================
 # COMANDOS E INTERFACE DO TELEGRAM
 # =========================
@@ -223,8 +234,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("nome", None)
     url_imagem = "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?q=80&w=1000&auto=format&fit=crop"
     legenda_boas_vindas = (
-        "🚀 **BEM-VINDO AO SNAP SINAIS BOT** 📈\n\n"
-        "TERMINAL INTELIGENTE DE ANÁLISE DE MERCADO.\n\n"
+        "🚀 **BEM-VINDO AO SNAP SINAIS + IQ OPTION** 📈\n\n"
+        "TERMINAL INTELIGENTE DE ANÁLISE E EXECUÇÃO AUTOMÁTICA.\n\n"
         "PARA COMEÇAR, POR FAVOR, INFORME:\n"
         "👉 **QUAL É O SEU NOME OU APELIDO?**"
     )
@@ -302,7 +313,7 @@ async def botao_clicado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sigla_chave = data.replace("btn_", "")
         if sigla_chave in MAPA_ATIVOS:
             info = MAPA_ATIVOS[sigla_chave]
-            await executar_analise_mercado(chat_id, context, nome_usuario, sigla_chave, info["par_api"], info["nome"])
+            await executar_analise_mercado(chat_id, context, nome_usuario, sigla_chave, info["par_api"], info["nome"], info["iq_symbol"])
 
 async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -325,15 +336,15 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     if contem_sinal or contem_cotacao:
         if "dólar" in texto_usuario or "usdbrl" in texto_usuario:
             info = MAPA_ATIVOS["usdbrl"]
-            await executar_analise_mercado(chat_id, context, nome_usuario, "usdbrl", info["par_api"], info["nome"])
+            await executar_analise_mercado(chat_id, context, nome_usuario, "usdbrl", info["par_api"], info["nome"], info["iq_symbol"])
             return
         elif "bitcoin" in texto_usuario or "btc" in texto_usuario:
             info = MAPA_ATIVOS["btc"]
-            await executar_analise_mercado(chat_id, context, nome_usuario, "btc", info["par_api"], info["nome"])
+            await executar_analise_mercado(chat_id, context, nome_usuario, "btc", info["par_api"], info["nome"], info["iq_symbol"])
             return
         elif "euro" in texto_usuario or "eur" in texto_usuario:
             info = MAPA_ATIVOS["eurusd"]
-            await executar_analise_mercado(chat_id, context, nome_usuario, "eurusd", info["par_api"], info["nome"])
+            await executar_analise_mercado(chat_id, context, nome_usuario, "eurusd", info["par_api"], info["nome"], info["iq_symbol"])
             return
         else:
             await context.bot.send_message(chat_id=chat_id, text="🔍 *ATIVO NÃO IDENTIFICADO.*", parse_mode="Markdown")
