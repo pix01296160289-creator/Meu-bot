@@ -1,5 +1,6 @@
 import os
 import sys
+import asyncio
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
@@ -189,25 +190,41 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
         return f"❌ Erro de conexão com a Groq: {e}"
 
 # =========================
-# EXECUTAR ANÁLISE DE MERCADO
+# EXECUTAR ANÁLISE DE MERCADO (COM ESPERA DE ATUALIZAÇÃO DO PREÇO)
 # =========================
 async def executar_analise_mercado(chat_id, context, nome_usuario, par_api, nome_ativo):
     mercado_aberto, info_status = verificar_status_mercado(par_api)
 
-    await context.bot.send_message(chat_id=chat_id, text=f"🔍 *CONSULTANDO TERMINAIS PARA {nome_ativo.upper()}...*\n\n{info_status}", parse_mode="Markdown")
+    await context.bot.send_message(
+        chat_id=chat_id, 
+        text=f"🔍 *CAPTURANDO E AGUARDANDO ATUALIZAÇÃO PARA {nome_ativo.upper()}...*\n\n{info_status}", 
+        parse_mode="Markdown"
+    )
 
-    preco_atual_val = obter_preco_atual(par_api)
+    # 1. Pega o preço inicial do momento do clique
+    preco_inicial = obter_preco_atual(par_api)
+    preco_atual_val = preco_inicial
+
+    # 2. Fica aguardando a cotação atualizar (tentando por até 10 segundos a cada 1 segundo)
+    for _ in range(10):
+        await asyncio.sleep(1)
+        novo_preco = obter_preco_atual(par_api)
+        if novo_preco > 0 and novo_preco != preco_inicial:
+            preco_atual_val = novo_preco
+            break
+        elif novo_preco > 0:
+            preco_atual_val = novo_preco
+
     preco_atual_str = f"{preco_atual_val:.5f}" if preco_atual_val > 0 else "N/A"
-
     status_texto = "Aberto 🟢" if mercado_aberto else "Fechado 🔴"
 
     dados_mercado = (
         f"Ativo: {nome_ativo} | "
         f"Status do Mercado: {status_texto} | "
-        f"Preço Real Obtido agora: {preco_atual_str}"
+        f"Preço Real Atualizado: {preco_atual_str}"
     )
 
-    prompt_ia = f"Gere o relatório analítico ou de fechamento para os dados reais: {dados_mercado}. Utilize obrigatoriamente o Preço Real Obtido informado."
+    prompt_ia = f"Gere o relatório analítico ou de fechamento para os dados reais: {dados_mercado}. Utilize obrigatoriamente o Preço Real Atualizado informado."
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
     resposta_ia = chamar_groq(prompt_ia, nome_usuario, modo_sinal=True, mercado_aberto=mercado_aberto)
@@ -498,6 +515,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
