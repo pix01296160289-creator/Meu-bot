@@ -3,3 +3,4 @@ requests
 yfinance
 python-dotenv
 iqoptionapi
+websocket-client
