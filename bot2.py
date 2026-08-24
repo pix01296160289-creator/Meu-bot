@@ -132,7 +132,7 @@ def obter_preco_atual(par_api):
         return 0.0
 
 # =========================
-# FUNÇÃO DE CHAMADA À API DA GROQ
+# FUNÇÃO DE CHAMADA À API DA GROQ (COM LLAMA 3.3)
 # =========================
 def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercado_aberto=True):
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -146,14 +146,14 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
             instrucao_sistema = (
                 f"Você é o analista sênior do 'Snap Sinais Bot' especializado em Opções Binárias e Forex. "
                 f"O operador se chama {nome_usuario}. "
-                f"O mercado está ABERTO. Monte um **Sinal de Trade Profissional**, incluindo obrigatoriamente o **Tempo de Expiração** para Opções Binárias (ex: M1, M5 ou M15). "
-                f"Siga rigorosamente este modelo:\n\n"
+                f"O mercado está ABERTO. Monte um **Sinal de Trade Profissional**, utilizando obrigatoriamente o preço real fornecido pelo usuário. "
+                f"Siga rigorosamente este modelo visual:\n\n"
                 f"🎯 **SINAL DE ANÁLISE - [NOME DO ATIVO]**\n"
                 f"• **Status:** Mercado Aberto 🟢\n"
                 f"• **Tendência:** [Alta / Baixa / Lateral]\n"
                 f"• **Preço Atual:** [Valor exato fornecido]\n\n"
                 f"⏱️ **OPÇÃO BINÁRIA (EXPIRAÇÃO):**\n"
-                f"• **Tempo:** [Ex: M5 - 5 Minutos]\n"
+                f"• **Tempo:** M5 - 5 Minutos\n"
                 f"• **Direção:** [CALL 🟢 (Compra) / PUT 🔴 (Venda)]\n"
                 f"• **Ponto de Entrada:** [Preço ideal baseado no preço atual]\n\n"
                 f"💡 *[Recomendação prática curta]*"
@@ -171,7 +171,7 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
         instrucao_sistema = f"Você é o assistente executivo do 'Snap Sinais Bot'. O usuário se chama {nome_usuario}."
 
     payload = {
-        "model": "openai/gpt-oss-120b",
+        "model": "llama-3.3-70b-versatile",
         "messages": [
             {"role": "system", "content": instrucao_sistema},
             {"role": "user", "content": pergunta_usuario}
@@ -184,7 +184,7 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
         if response.status_code == 200:
             return response.json()['choices'][0]['message']['content']
         else:
-            return f"⚠️ Erro na API da Groq: {response.status_code}"
+            return f"⚠️ Erro na API da Groq: {response.status_code} - {response.text}"
     except Exception as e:
         return f"❌ Erro de conexão com a Groq: {e}"
 
@@ -416,7 +416,6 @@ async def botao_clicado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "menu_cripto":
         await mostrar_menu_cripto(query, nome_usuario)
 
-    # Mapeamento dos botões para execução direta
     elif data == "btn_eurusd":
         await executar_analise_mercado(chat_id, context, nome_usuario, "EUR-USD", "EUR/USD")
     elif data == "btn_gbpusd":
@@ -499,3 +498,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
