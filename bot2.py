@@ -42,6 +42,22 @@ async def erro_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     print(f"❌ ERRO CAPTURADO NO BOT: {context.error}", flush=True)
 
 # =========================
+# MAPA DOS 10 PRINCIPAIS ATIVOS
+# =========================
+MAPA_ATIVOS = {
+    "eurusd": {"par_api": "EUR-USD", "nome": "EUR/USD (Binária M5)", "multiplicador": 10000},
+    "gbpusd": {"par_api": "GBP-USD", "nome": "GBP/USD (Binária M5)", "multiplicador": 10000},
+    "usdjpy": {"par_api": "USD-JPY", "nome": "USD/JPY (Binária M5)", "multiplicador": 100},
+    "audusd": {"par_api": "AUD-USD", "nome": "AUD/USD (Binária M5)", "multiplicador": 10000},
+    "usdbrl": {"par_api": "USD-BRL", "nome": "Dólar / Real (USD/BRL)", "multiplicador": 10000},
+    "gbpbrl": {"par_api": "GBP-BRL", "nome": "Libra / Real (GBP/BRL)", "multiplicador": 10000},
+    "eurbrl": {"par_api": "EUR-BRL", "nome": "Euro / Real (EUR/BRL)", "multiplicador": 10000},
+    "btc": {"par_api": "BTC-BRL", "nome": "Bitcoin / Real (BTC/BRL)", "multiplicador": 1},
+    "eth": {"par_api": "ETH-BRL", "nome": "Ethereum / Real (ETH/BRL)", "multiplicador": 1},
+    "xau": {"par_api": "XAU-USD", "nome": "Ouro / Dólar (XAU/USD)", "multiplicador": 10}
+}
+
+# =========================
 # FUNÇÃO DE VERIFICAÇÃO DE MERCADO (FUSO DO BRASIL)
 # =========================
 def verificar_status_mercado(par_api):
@@ -64,11 +80,10 @@ def verificar_status_mercado(par_api):
     return True, f"🟢 **MERCADO ABERTO**\n📅 *DATA/HORA (BR):* {data_formatada}"
 
 # =========================
-# FUNÇÃO PARA OBTER PREÇO REAL E DINÂMICO VIA YAHOO FINANCE
+# FUNÇÃO PARA OBTER PREÇO REAL VIA YAHOO FINANCE
 # =========================
 def obter_preco_atual(par_api):
     try:
-        # Mapeamento dos pares para o formato do Yahoo Finance (=X para forex, -USD para cripto, etc)
         ticker_map = {
             "EUR-USD": "EURUSD=X",
             "GBP-USD": "GBPUSD=X",
@@ -79,24 +94,21 @@ def obter_preco_atual(par_api):
             "EUR-BRL": "EURBRL=X",
             "BTC-BRL": "BTC-BRL",
             "ETH-BRL": "ETH-BRL",
-            "XAU-USD": "GC=F"  # Contrato futuro de Ouro
+            "XAU-USD": "GC=F"
         }
 
         ticker_symbol = ticker_map.get(par_api)
         if not ticker_symbol:
             return 0.0
 
-        # Baixa os dados recentes do ativo (últimos minutos/dia atual)
         dados = yf.download(ticker_symbol, period="1d", interval="1m", progress=False)
         
         if not dados.empty and "Close" in dados.columns:
-            # Pega o último preço fechado da série temporal obtida
             preco_recente = dados["Close"].iloc[-1]
             if hasattr(preco_recente, "item"):
                 preco_recente = preco_recente.item()
             return float(preco_recente)
         else:
-            # Fallback caso o intervalo de 1m venha vazio
             ticker_obj = yf.Ticker(ticker_symbol)
             hist = ticker_obj.history(period="1d")
             if not hist.empty:
@@ -192,6 +204,101 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, par_api, nome
     resposta_ia = chamar_groq(prompt_ia, nome_usuario, modo_sinal=True, mercado_aberto=mercado_aberto)
 
     await context.bot.send_message(chat_id=chat_id, text=resposta_ia, parse_mode="Markdown")
+
+# =========================
+# MONITOR DE VARIAÇÃO RÁPIDA (MULTIATVOS)
+# =========================
+async def monitorar_variacao_mercado(context: ContextTypes.DEFAULT_TYPE):
+    job = context.job
+    chat_id = job.chat_id
+    nome_usuario = job.data.get("nome", "Operador")
+    par_api = job.data.get("par_api", "EUR-USD")
+    nome_ativo = job.data.get("nome_ativo", "EUR/USD")
+    multiplicador = job.data.get("multiplicador", 10000)
+
+    if not hasattr(job, "ultimo_preco"):
+        job.ultimo_preco = None
+
+    preco_atual = obter_preco_atual(par_api)
+    if preco_atual <= 0:
+        return
+
+    if job.ultimo_preco is not None:
+        diferenca = preco_atual - job.ultimo_preco
+        unidades = abs(diferenca) * multiplicador
+
+        limite_disparo = 5.0 if multiplicador >= 1000 else 50.0
+
+        if unidades >= limite_disparo:
+            direcao_movimento = "⚡ ALTA FORTE (SPIKE COMPRADOR)" if diferenca > 0 else "⚡ QUEDA FORTE (SPIKE VENDEDOR)"
+            
+            alerta_texto = (
+                f"🚨 **ALERTA DE VARIAÇÃO RÁPIDA - {nome_ativo}** 🚨\n\n"
+                f"• **Movimento:** {direcao_movimento}\n"
+                f"• **Variação detectada!**\n"
+                f"• **Preço Atual:** `{preco_atual:.5f}`\n\n"
+                f"💡 *O mercado esticou rápido! Analisando oportunidade imediata...*"
+            )
+            await context.bot.send_message(chat_id=chat_id, text=alerta_texto, parse_mode="Markdown")
+            await executar_analise_mercado(chat_id, context, nome_usuario, par_api, nome_ativo)
+
+    job.ultimo_preco = preco_atual
+
+async def comando_alertar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    nome_usuario = context.user_data.get("nome", "Operador")
+
+    args = context.args
+    if not args:
+        current_jobs = context.job_queue.get_jobs_by_name(str(chat_id))
+        for j in current_jobs:
+            j.schedule_removal()
+        await update.message.reply_text("🔕 *MONITORES DE VARIAÇÃO DESATIVADOS PARA ESTE CHAT.*", parse_mode="Markdown")
+        return
+
+    try:
+        minutos = int(args[0])
+        if minutos < 1:
+            raise ValueError()
+        
+        sigla_ativo = args[1].lower() if len(args) > 1 else "eurusd"
+        
+        if sigla_ativo not in MAPA_ATIVOS:
+            lista_disponiveis = ", ".join(MAPA_ATIVOS.keys())
+            await update.message.reply_text(f"⚠️ Ativo inválido! Escolha um destes:\n`{lista_disponiveis}`", parse_mode="Markdown")
+            return
+
+        info = MAPA_ATIVOS[sigla_ativo]
+
+        current_jobs = context.job_queue.get_jobs_by_name(str(chat_id))
+        for j in current_jobs:
+            j.schedule_removal()
+
+        dados_alerta = {
+            "nome": nome_usuario, 
+            "par_api": info["par_api"], 
+            "nome_ativo": info["nome"],
+            "multiplicador": info["multiplicador"]
+        }
+        
+        context.job_queue.run_repeating(
+            monitorar_variacao_mercado,
+            interval=minutos * 60,
+            first=5,
+            chat_id=chat_id,
+            data=dados_alerta,
+            name=str(chat_id)
+        )
+
+        await update.message.reply_text(
+            f"🔔 *MONITOR DE VARIAÇÃO ATIVADO!*\n\n"
+            f"Monitorando **{info['nome']}** a cada **{minutos} minuto(s)**.\n"
+            f"Se houver pico brusco, você será avisado na hora!\n"
+            f"Para desativar, digite `/alertar` sem parâmetros.",
+            parse_mode="Markdown"
+        )
+    except ValueError:
+        await update.message.reply_text("⚠️ Use o formato correto, ex: `/alertar 5 btc` ou `/alertar 2 eurusd`.", parse_mode="Markdown")
 
 # =========================
 # COMANDOS E INTERFACE DO TELEGRAM
@@ -364,6 +471,7 @@ def main():
 
     app.add_error_handler(erro_handler)
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("alertar", comando_alertar))
     app.add_handler(CallbackQueryHandler(botao_clicado))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_texto_livre))
 
@@ -372,4 +480,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
