@@ -1,4 +1,4 @@
-import os
+  import os
 import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -132,7 +132,7 @@ def obter_preco_atual(par_api):
         return 0.0
 
 # =========================
-# FUNÇÃO DE CHAMADA À API DA GROQ (COM LLAMA 3.3)
+# FUNÇÃO DE CHAMADA À API DA GROQ (COM GPT-OSS 120B)
 # =========================
 def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercado_aberto=True):
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -171,7 +171,7 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
         instrucao_sistema = f"Você é o assistente executivo do 'Snap Sinais Bot'. O usuário se chama {nome_usuario}."
 
     payload = {
-        "model": "llama-3.3-70b-versatile",
+        "model": "openai/gpt-oss-120b",
         "messages": [
             {"role": "system", "content": instrucao_sistema},
             {"role": "user", "content": pergunta_usuario}
@@ -498,4 +498,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
