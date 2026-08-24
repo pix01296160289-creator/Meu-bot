@@ -63,7 +63,7 @@ def verificar_status_mercado(par_api):
     return True, f"🟢 **MERCADO ABERTO**\n📅 *DATA/HORA (BR):* {data_formatada}"
 
 # =========================
-# FUNÇÃO PARA OBTER PREÇO REAL DA API
+# FUNÇÃO PARA OBTER PREÇO REAL DA API (SEM CACHE)
 # =========================
 def obter_preco_atual(par_api):
     try:
@@ -73,17 +73,18 @@ def obter_preco_atual(par_api):
             res = requests.get(url_crypto, timeout=10).json()
             return float(res.get(moeda_id, {}).get("brl", 0.0))
         elif "XAU" in par_api:
-            url_gold = "https://open.er-api.com/v6/latest/XAU"
+            url_gold = "https://open.er-api.com/v6/latest/XAU?_t=" + str(datetime.now().timestamp())
             res = requests.get(url_gold, timeout=10).json()
             rates = res.get("rates", {})
             return float(rates.get("USD", 0.0))
         else:
             moeda_base, moeda_alvo = par_api.split("-")
-            url_forex = f"https://open.er-api.com/v6/latest/{moeda_base}"
+            url_forex = f"https://open.er-api.com/v6/latest/{moeda_base}?_t=" + str(datetime.now().timestamp())
             res = requests.get(url_forex, timeout=10).json()
             rates = res.get("rates", {})
             return float(rates.get(moeda_alvo, 0.0))
-    except:
+    except Exception as e:
+        print(f"❌ Erro ao buscar preço: {e}", flush=True)
         return 0.0
 
 # =========================
@@ -348,3 +349,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
