@@ -1,5 +1,5 @@
 python-telegram-bot
 requests
-python-dotenv
-httpx
 yfinance
+python-dotenv
+iqoptionapi
