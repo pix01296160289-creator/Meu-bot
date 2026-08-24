@@ -29,6 +29,12 @@ if not GROQ_API_KEY:
     sys.exit(1)
 
 # =========================
+# DICIONÁRIO DE CONTAS DEMO (Banca Virtual por Usuário)
+# =========================
+# Formato: { chat_id: {"saldo": 10000.0, "nome": "Nome"} }
+CONTAS_DEMO = {}
+
+# =========================
 # LISTAS DE PALAVRAS-CHAVE
 # =========================
 PALAVRAS_SINAL = ["sinal", "análise", "mercado", "entrada", "stop"]
@@ -45,35 +51,53 @@ async def erro_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 # FUNÇÃO DE VERIFICAÇÃO DE MERCADO (FUSO DO BRASIL)
 # =========================
 def verificar_status_mercado(par_api):
-    # Pega a hora exata no fuso horário do Brasil (Brasília)
     fuso_brasil = ZoneInfo("America/Sao_Paulo")
     agora = datetime.now(fuso_brasil)
     
     dia_semana = agora.weekday() # 0 = Segunda, ..., 5 = Sábado, 6 = Domingo
     hora = agora.hour
-
     data_formatada = agora.strftime('%d/%m/%Y às %H:%M')
 
-    # Criptomoedas (BTC, ETH) rodam 24/7 (nunca fecham)
     if "BTC" in par_api or "ETH" in par_api:
         return True, f"🟢 **MERCADO CRIPTO 24/7 ABERTO**\n📅 *DATA/HORA (BR):* {data_formatada}"
 
-    # Sábado (dia 5) o mercado de Forex e Metais está totalmente fechado
     if dia_semana == 5:
         return False, f"🔴 **MERCADO FECHADO (FIM DE SEMANA)**\n📅 *DATA/HORA (BR):* {data_formatada}\n⚠️ *FOREX E METAIS FECHADOS. REABERTURA DOMINGO ÀS 18:00.*"
     
-    # Domingo (dia 6) antes das 18:00 o mercado de Forex e Metais ainda está fechado
     if dia_semana == 6 and hora < 18:
         return False, f"🔴 **MERCADO FECHADO (FIM DE SEMANA)**\n📅 *DATA/HORA (BR):* {data_formatada}\n⚠️ *FOREX E METAIS FECHADOS. REABERTURA DOMINGO ÀS 18:00.*"
 
     return True, f"🟢 **MERCADO ABERTO**\n📅 *DATA/HORA (BR):* {data_formatada}"
 
 # =========================
+# FUNÇÃO PARA OBTER PREÇO REAL DA API
+# =========================
+def obter_preco_atual(par_api):
+    try:
+        if "BTC" in par_api or "ETH" in par_api:
+            moeda_id = "bitcoin" if "BTC" in par_api else "ethereum"
+            url_crypto = f"https://api.coingecko.com/api/v3/simple/price?ids={moeda_id}&vs_currencies=brl"
+            res = requests.get(url_crypto, timeout=10).json()
+            return float(res.get(moeda_id, {}).get("brl", 0.0))
+        elif "XAU" in par_api:
+            url_gold = "https://open.er-api.com/v6/latest/XAU"
+            res = requests.get(url_gold, timeout=10).json()
+            rates = res.get("rates", {})
+            return float(rates.get("USD", 0.0))
+        else:
+            moeda_base, moeda_alvo = par_api.split("-")
+            url_forex = f"https://open.er-api.com/v6/latest/{moeda_base}"
+            res = requests.get(url_forex, timeout=10).json()
+            rates = res.get("rates", {})
+            return float(rates.get(moeda_alvo, 0.0))
+    except:
+        return 0.0
+
+# =========================
 # FUNÇÃO DE CHAMADA À API DA GROQ
 # =========================
 def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercado_aberto=True):
     url = "https://api.groq.com/openai/v1/chat/completions"
-
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
@@ -94,14 +118,11 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
                 f"• **Tempo:** [Ex: M5 - 5 Minutos]\n"
                 f"• **Direção:** [CALL 🟢 (Compra) / PUT 🔴 (Venda)]\n"
                 f"• **Ponto de Entrada:** [Preço ideal]\n\n"
-                f"💡 *[Recomendação prática curta]*\n\n"
-                f"Proíba textos fora deste formato."
+                f"💡 *[Recomendação prática curta]*"
             )
         else:
             instrucao_sistema = (
-                f"Você é o analista sênior do 'Snap Sinais Bot'. "
-                f"O operador se chama {nome_usuario}. "
-                f"⚠️ O mercado está FECHADO. Monte um **Panorama de Fechamento** seguindo exatamente este modelo, sem sugerir ordens ativas:\n\n"
+                f"⚠️ O mercado está FECHADO. Monte um **Panorama de Fechamento** seguindo exatamente este modelo:\n\n"
                 f"🔒 **PANORAMA DE FECHAMENTO - [NOME DO ATIVO]**\n"
                 f"• **Status:** Mercado Fechado 🔴\n"
                 f"• **Último Preço (Fechamento):** [Valor]\n"
@@ -109,10 +130,7 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
                 f"💡 *Mercado fechado no momento. Reabertura domingo às 18:00 (Horário de Brasília).*"
             )
     else:
-        instrucao_sistema = (
-            f"Você é o assistente executivo do 'Snap Sinais Bot'. "
-            f"O usuário se chama {nome_usuario}. Seja educado, direto e prestativo."
-        )
+        instrucao_sistema = f"Você é o assistente executivo do 'Snap Sinais Bot'. O usuário se chama {nome_usuario}."
 
     payload = {
         "model": "openai/gpt-oss-120b",
@@ -126,96 +144,145 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=30)
         if response.status_code == 200:
-            dados = response.json()
-            return dados['choices'][0]['message']['content']
+            return response.json()['choices'][0]['message']['content']
         else:
-            return f"⚠️ Erro na API da Groq (Status {response.status_code}): {response.text}"
+            return f"⚠️ Erro na API da Groq: {response.status_code}"
     except Exception as e:
         return f"❌ Erro de conexão com a Groq: {e}"
 
 # =========================
-# FUNÇÕES DE BUSCA E ANÁLISE DE MERCADO
+# SIMULADOR M5 (CONTA DEMO COM VERIFICAÇÃO AUTOMÁTICA)
+# =========================
+async def monitorar_operacao_demo(chat_id, context, nome_ativo, par_api, preco_entrada, direcao, valor_investido):
+    # Aguarda exatamente 5 minutos (300 segundos)
+    await asyncio.sleep(300)
+
+    # Pega o preço real atualizado após 5 minutos
+    preco_final = obter_preco_atual(par_api)
+    
+    if chat_id not in CONTAS_DEMO:
+        CONTAS_DEMO[chat_id] = {"saldo": 10000.0}
+
+    conta = CONTAS_DEMO[chat_id]
+    payout = 0.85 # 85% de lucro sobre a entrada em caso de WIN
+    lucro = valor_investido * payout
+
+    resultado = "LOSS"
+    if direcao == "CALL" and preco_final > preco_entrada:
+        resultado = "WIN"
+    elif direcao == "PUT" and preco_final < preco_entrada:
+        resultado = "WIN"
+
+    if resultado == "WIN":
+        conta["saldo"] += lucro
+        mensagem_res = (
+            f"🎉 **RESULTADO DA CONTA DEMO (M5) - {nome_ativo.upper()}**\n\n"
+            f"🟢 **STATUS: WIN!**\n"
+            f"• Direção Escolhida: **{direcao}**\n"
+            f"• Preço de Entrada: `{preco_entrada:.5f}`\n"
+            f"• Preço após 5 min: `{preco_final:.5f}`\n"
+            f"• Lucro Obtido: `+${lucro:.2f}`\n"
+            f"💰 **Novo Saldo Demo:** `${conta['saldo']:.2f}`"
+        )
+    else:
+        conta["saldo"] -= valor_investido
+        mensagem_res = (
+            f"💥 **RESULTADO DA CONTA DEMO (M5) - {nome_ativo.upper()}**\n\n"
+            f"🔴 **STATUS: LOSS!**\n"
+            f"• Direção Escolhida: **{direcao}**\n"
+            f"• Preço de Entrada: `{preco_entrada:.5f}`\n"
+            f"• Preço após 5 min: `{preco_final:.5f}`\n"
+            f"• Valor Perdido: `-${valor_investido:.2f}`\n"
+            f"💰 **Novo Saldo Demo:** `${conta['saldo']:.2f}`"
+        )
+
+    await context.bot.send_message(chat_id=chat_id, text=mensagem_res, parse_mode="Markdown")
+
+# =========================
+# EXECUTAR ANÁLISE E ABRIR ORDEM DEMO
 # =========================
 async def executar_analise_mercado(chat_id, context, nome_usuario, par_api, nome_ativo):
     mercado_aberto, info_status = verificar_status_mercado(par_api)
 
     await context.bot.send_message(chat_id=chat_id, text=f"🔍 *CONSULTANDO TERMINAIS PARA {nome_ativo.upper()}...*\n\n{info_status}", parse_mode="Markdown")
 
-    preco_atual = "N/A"
-    
-    try:
-        if "BTC" in par_api or "ETH" in par_api:
-            moeda_id = "bitcoin" if "BTC" in par_api else "ethereum"
-            url_crypto = f"https://api.coingecko.com/api/v3/simple/price?ids={moeda_id}&vs_currencies=brl"
-            res = requests.get(url_crypto, timeout=10).json()
-            preco_atual = str(res.get(moeda_id, {}).get("brl", "N/A"))
-        elif "XAU" in par_api:
-            url_gold = "https://open.er-api.com/v6/latest/XAU"
-            res = requests.get(url_gold, timeout=10).json()
-            rates = res.get("rates", {})
-            preco_atual = str(rates.get("USD", "N/A"))
-        else:
-            moeda_base, moeda_alvo = par_api.split("-")
-            url_forex = f"https://open.er-api.com/v6/latest/{moeda_base}"
-            res = requests.get(url_forex, timeout=10).json()
-            rates = res.get("rates", {})
-            preco_atual = str(rates.get(moeda_alvo, "N/A"))
+    preco_atual_val = obter_preco_atual(par_api)
+    preco_atual_str = str(preco_atual_val) if preco_atual_val > 0 else "N/A"
 
-        status_texto = "Aberto 🟢" if mercado_aberto else "Fechado 🔴"
+    status_texto = "Aberto 🟢" if mercado_aberto else "Fechado 🔴"
 
-        dados_mercado = (
-            f"Ativo: {nome_ativo} | "
-            f"Status do Mercado: {status_texto} | "
-            f"Preço Real Obtido: {preco_atual}"
+    dados_mercado = (
+        f"Ativo: {nome_ativo} | "
+        f"Status do Mercado: {status_texto} | "
+        f"Preço Real Obtido: {preco_atual_str}"
+    )
+
+    prompt_ia = f"Gere o relatório analítico ou de fechamento para os dados reais: {dados_mercado}"
+
+    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+    resposta_ia = chamar_groq(prompt_ia, nome_usuario, modo_sinal=True, mercado_aberto=mercado_aberto)
+
+    await context.bot.send_message(chat_id=chat_id, text=resposta_ia, parse_mode="Markdown")
+
+    # Se o mercado estiver aberto, agenda uma operação de demonstração automática de 5 min baseada na análise
+    if mercado_aberto and preco_atual_val > 0:
+        if chat_id not in CONTAS_DEMO:
+            CONTAS_DEMO[chat_id] = {"saldo": 10000.0}
+
+        direcao_simulada = "CALL" if "CALL" in resposta_ia.upper() else "PUT"
+        valor_padrao = 100.0
+
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"🤖 **CONTA DEMO ATIVADA!**\nOrdem de **${valor_padrao:.2f}** aberta automaticamente em **{direcao_simulada}** para `{nome_ativo}`. O resultado sai em exatos 5 minutos!",
+            parse_mode="Markdown"
         )
 
-        prompt_ia = f"Gere o relatório analítico ou de fechamento para os dados reais: {dados_mercado}"
-
-        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-        resposta_ia = chamar_groq(prompt_ia, nome_usuario, modo_sinal=True, mercado_aberto=mercado_aberto)
-
-        await context.bot.send_message(chat_id=chat_id, text=resposta_ia, parse_mode="Markdown")
-
-    except Exception as e:
-        await context.bot.send_message(chat_id=chat_id, text=f"❌ FALHA NA CONEXÃO COM O PROVEDOR DE COTAÇÕES: {e}")
+        # Inicia a contagem regressiva em segundo plano
+        asyncio.create_task(monitorar_operacao_demo(chat_id, context, nome_ativo, par_api, preco_atual_val, direcao_simulada, valor_padrao))
 
 # =========================
 # COMANDOS E INTERFACE DO TELEGRAM
 # =========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("nome", None)
+    chat_id = update.effective_chat.id
+    CONTAS_DEMO[chat_id] = {"saldo": 10000.0} # Inicializa com $10.000 demo
 
     url_imagem = "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?q=80&w=1000&auto=format&fit=crop"
-
     legenda_boas_vindas = (
-        "🚀 **BEM-VINDO AO SNAP SINAIS!** 📈\n\n"
-        "TERMINAL INTELIGENTE DE ANÁLISE DE MERCADO E OPÇÕES BINÁRIAS.\n\n"
+        "🚀 **BEM-VINDO AO SNAP SINAIS (CONTA DEMO)** 📈\n\n"
+        "TERMINAL INTELIGENTE COM BANCA VIRTUAL DE $10,000.00.\n\n"
         "PARA COMEÇAR, POR FAVOR, INFORME:\n"
         "👉 **QUAL É O SEU NOME OU APELIDO?**"
     )
 
     try:
-        await update.message.reply_photo(
-            photo=url_imagem,
-            caption=legenda_boas_vindas,
-            parse_mode="Markdown"
-        )
+        await update.message.reply_photo(photo=url_imagem, caption=legenda_boas_vindas, parse_mode="Markdown")
     except:
         await update.message.reply_text(legenda_boas_vindas, parse_mode="Markdown")
 
 async def enviar_menu_principal(update_or_query, context, nome_usuario):
+    chat_id = update_or_query.message.chat_id if hasattr(update_or_query, "message") else update_or_query.effective_chat.id
+    if chat_id not in CONTAS_DEMO:
+        CONTAS_DEMO[chat_id] = {"saldo": 10000.0}
+
+    saldo_atual = CONTAS_DEMO[chat_id]["saldo"]
+
     teclado = [
-        [InlineKeyboardButton("📊 OPÇÕES BINÁRIAS (GERAL)", callback_data="menu_binarias")],
+        [InlineKeyboardButton(f"💰 SALDO DEMO: ${saldo_atual:.2f}", callback_data="btn_saldo")],
+        [InlineKeyboardButton("📊 OPÇÕES BINÁRIAS (M5 DEMO)", callback_data="menu_binarias")],
         [InlineKeyboardButton("💱 CÂMBIO (FOREX)", callback_data="menu_forex")],
         [InlineKeyboardButton("🪙 CRIPTOMOEDAS", callback_data="menu_cripto")],
         [InlineKeyboardButton("🥇 METAIS & COMMODITIES", callback_data="menu_metais")],
-        [InlineKeyboardButton("🔄 REDEFINIR NOME", callback_data="btn_reset")]
+        [InlineKeyboardButton("🔄 RESETAR CONTA DEMO", callback_data="btn_reset")]
     ]
     reply_markup = InlineKeyboardMarkup(teclado)
 
     texto_menu = (
-        f"🎛️ **PAINEL EXECUTIVO DE OPERAÇÕES**\n"
-        f"👤 *OPERADOR:* **{nome_usuario.upper()}**\n\n"
+        f"🎛️ **PAINEL EXECUTIVO DE OPERAÇÕES (DEMO)**\n"
+        f"👤 *OPERADOR:* **{nome_usuario.upper()}**\n"
+        f"💰 *BANCA VIRTUAL:* **${saldo_atual:.2f}**\n\n"
         f"SELECIONE A CATEGORIA DESEJADA ABAIXO:"
     )
 
@@ -230,68 +297,42 @@ async def enviar_menu_principal(update_or_query, context, nome_usuario):
 async def mostrar_menu_binarias(query, nome_usuario):
     teclado = [
         [
-            InlineKeyboardButton("💶 EUR/USD (Binária)", callback_data="btn_bin_eurusd"),
-            InlineKeyboardButton("💷 GBP/USD (Binária)", callback_data="btn_bin_gbpusd")
+            InlineKeyboardButton("💶 EUR/USD (Binária M5)", callback_data="btn_bin_eurusd"),
+            InlineKeyboardButton("💷 GBP/USD (Binária M5)", callback_data="btn_bin_gbpusd")
         ],
         [
-            InlineKeyboardButton("💵 USD/JPY (Binária)", callback_data="btn_bin_usdjpy"),
-            InlineKeyboardButton("📉 AUD/USD (Binária)", callback_data="btn_bin_audusd")
+            InlineKeyboardButton("💵 USD/JPY (Binária M5)", callback_data="btn_bin_usdjpy"),
+            InlineKeyboardButton("📉 AUD/USD (Binária M5)", callback_data="btn_bin_audusd")
         ],
-        [
-            InlineKeyboardButton("⬅️ VOLTAR AO MENU PRINCIPAL", callback_data="menu_principal")
-        ]
+        [InlineKeyboardButton("⬅️ VOLTAR AO MENU PRINCIPAL", callback_data="menu_principal")]
     ]
     reply_markup = InlineKeyboardMarkup(teclado)
-    await query.edit_message_text(f"📊 **CATEGORIA: OPÇÕES BINÁRIAS**\n👤 *OPERADOR:* **{nome_usuario.upper()}**\n\nEscolha o par para sinal de expiração:", reply_markup=reply_markup, parse_mode="Markdown")
+    await query.edit_message_text(f"📊 **OPÇÕES BINÁRIAS (CONTA DEMO)**\nEscolha o ativo para abrir ordem automática de 5 min:", reply_markup=reply_markup, parse_mode="Markdown")
 
 async def mostrar_menu_forex(query, nome_usuario):
     teclado = [
-        [
-            InlineKeyboardButton("💵 USD/BRL", callback_data="btn_usdbrl"),
-            InlineKeyboardButton("💶 EUR/USD", callback_data="btn_eurusd")
-        ],
-        [
-            InlineKeyboardButton("💷 GBP/BRL", callback_data="btn_gbpbrl"),
-            InlineKeyboardButton("🇪🇺 EUR/BRL", callback_data="btn_eurbrl")
-        ],
-        [
-            InlineKeyboardButton("🇯🇵 JPY/BRL", callback_data="btn_jpybrl"),
-            InlineKeyboardButton("🇦🇺 AUD/BRL", callback_data="btn_audbrl")
-        ],
-        [
-            InlineKeyboardButton("🇨🇦 CAD/BRL", callback_data="btn_cadbrl")
-        ],
-        [
-            InlineKeyboardButton("⬅️ VOLTAR AO MENU PRINCIPAL", callback_data="menu_principal")
-        ]
+        [InlineKeyboardButton("💵 USD/BRL", callback_data="btn_usdbrl"), InlineKeyboardButton("💶 EUR/USD", callback_data="btn_eurusd")],
+        [InlineKeyboardButton("💷 GBP/BRL", callback_data="btn_gbpbrl"), InlineKeyboardButton("🇪🇺 EUR/BRL", callback_data="btn_eurbrl")],
+        [InlineKeyboardButton("⬅️ VOLTAR AO MENU PRINCIPAL", callback_data="menu_principal")]
     ]
     reply_markup = InlineKeyboardMarkup(teclado)
-    await query.edit_message_text(f"💱 **CATEGORIA: CÂMBIO (FOREX)**\n👤 *OPERADOR:* **{nome_usuario.upper()}**\n\nEscolha o par de moedas:", reply_markup=reply_markup, parse_mode="Markdown")
+    await query.edit_message_text(f"💱 **CÂMBIO (FOREX)**", reply_markup=reply_markup, parse_mode="Markdown")
 
 async def mostrar_menu_cripto(query, nome_usuario):
     teclado = [
-        [
-            InlineKeyboardButton("🪙 BTC/BRL", callback_data="btn_btc"),
-            InlineKeyboardButton("🔷 ETH/BRL", callback_data="btn_eth")
-        ],
-        [
-            InlineKeyboardButton("⬅️ VOLTAR AO MENU PRINCIPAL", callback_data="menu_principal")
-        ]
+        [InlineKeyboardButton("🪙 BTC/BRL", callback_data="btn_btc"), InlineKeyboardButton("🔷 ETH/BRL", callback_data="btn_eth")],
+        [InlineKeyboardButton("⬅️ VOLTAR AO MENU PRINCIPAL", callback_data="menu_principal")]
     ]
     reply_markup = InlineKeyboardMarkup(teclado)
-    await query.edit_message_text(f"🪙 **CATEGORIA: CRIPTOMOEDAS**\n👤 *OPERADOR:* **{nome_usuario.upper()}**\n\nEscolha o ativo cripto:", reply_markup=reply_markup, parse_mode="Markdown")
+    await query.edit_message_text(f"🪙 **CRIPTOMOEDAS**", reply_markup=reply_markup, parse_mode="Markdown")
 
 async def mostrar_menu_metais(query, nome_usuario):
     teclado = [
-        [
-            InlineKeyboardButton("🥇 OURO (XAU/USD)", callback_data="btn_xau")
-        ],
-        [
-            InlineKeyboardButton("⬅️ VOLTAR AO MENU PRINCIPAL", callback_data="menu_principal")
-        ]
+        [InlineKeyboardButton("🥇 OURO (XAU/USD)", callback_data="btn_xau")],
+        [InlineKeyboardButton("⬅️ VOLTAR AO MENU PRINCIPAL", callback_data="menu_principal")]
     ]
     reply_markup = InlineKeyboardMarkup(teclado)
-    await query.edit_message_text(f"🥇 **CATEGORIA: METAIS & COMMODITIES**\n👤 *OPERADOR:* **{nome_usuario.upper()}**\n\nEscolha o ativo:", reply_markup=reply_markup, parse_mode="Markdown")
+    await query.edit_message_text(f"🥇 **METAIS**", reply_markup=reply_markup, parse_mode="Markdown")
 
 async def botao_clicado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -311,56 +352,39 @@ async def botao_clicado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await mostrar_menu_cripto(query, nome_usuario)
     elif data == "menu_metais":
         await mostrar_menu_metais(query, nome_usuario)
+    elif data == "btn_saldo":
+        saldo = CONTAS_DEMO.get(chat_id, {}).get("saldo", 10000.0)
+        await query.answer(f"Seu saldo demo atual é de: ${saldo:.2f}", show_alert=True)
 
     elif data == "btn_bin_eurusd":
         await executar_analise_mercado(chat_id, context, nome_usuario, "EUR-USD", "EUR/USD (Opções Binárias)")
-        await mostrar_menu_binarias(query, nome_usuario)
     elif data == "btn_bin_gbpusd":
         await executar_analise_mercado(chat_id, context, nome_usuario, "GBP-USD", "GBP/USD (Opções Binárias)")
-        await mostrar_menu_binarias(query, nome_usuario)
     elif data == "btn_bin_usdjpy":
         await executar_analise_mercado(chat_id, context, nome_usuario, "USD-JPY", "USD/JPY (Opções Binárias)")
-        await mostrar_menu_binarias(query, nome_usuario)
     elif data == "btn_bin_audusd":
         await executar_analise_mercado(chat_id, context, nome_usuario, "AUD-USD", "AUD/USD (Opções Binárias)")
-        await mostrar_menu_binarias(query, nome_usuario)
 
     elif data == "btn_usdbrl":
         await executar_analise_mercado(chat_id, context, nome_usuario, "USD-BRL", "Dólar / Real (USD/BRL)")
-        await mostrar_menu_forex(query, nome_usuario)
     elif data == "btn_eurusd":
         await executar_analise_mercado(chat_id, context, nome_usuario, "EUR-USD", "Euro / Dólar (EUR/USD)")
-        await mostrar_menu_forex(query, nome_usuario)
     elif data == "btn_gbpbrl":
         await executar_analise_mercado(chat_id, context, nome_usuario, "GBP-BRL", "Libra / Real (GBP/BRL)")
-        await mostrar_menu_forex(query, nome_usuario)
     elif data == "btn_eurbrl":
         await executar_analise_mercado(chat_id, context, nome_usuario, "EUR-BRL", "Euro / Real (EUR/BRL)")
-        await mostrar_menu_forex(query, nome_usuario)
-    elif data == "btn_jpybrl":
-        await executar_analise_mercado(chat_id, context, nome_usuario, "JPY-BRL", "Iene / Real (JPY/BRL)")
-        await mostrar_menu_forex(query, nome_usuario)
-    elif data == "btn_audbrl":
-        await executar_analise_mercado(chat_id, context, nome_usuario, "AUD-BRL", "Dólar Australiano / Real (AUD/BRL)")
-        await mostrar_menu_forex(query, nome_usuario)
-    elif data == "btn_cadbrl":
-        await executar_analise_mercado(chat_id, context, nome_usuario, "CAD-BRL", "Dólar Canadense / Real (CAD/BRL)")
-        await mostrar_menu_forex(query, nome_usuario)
 
     elif data == "btn_btc":
         await executar_analise_mercado(chat_id, context, nome_usuario, "BTC-BRL", "Bitcoin / Real (BTC/BRL)")
-        await mostrar_menu_cripto(query, nome_usuario)
     elif data == "btn_eth":
         await executar_analise_mercado(chat_id, context, nome_usuario, "ETH-BRL", "Ethereum / Real (ETH/BRL)")
-        await mostrar_menu_cripto(query, nome_usuario)
-
     elif data == "btn_xau":
         await executar_analise_mercado(chat_id, context, nome_usuario, "XAU-USD", "Ouro / Dólar (XAU/USD)")
-        await mostrar_menu_metais(query, nome_usuario)
 
     elif data == "btn_reset":
-        context.user_data.pop("nome", None)
-        await query.message.reply_text("🔄 *SESSÃO RESETADA!* POR FAVOR, INFORME SEU NOME NOVAMENTE:", parse_mode="Markdown")
+        CONTAS_DEMO[chat_id] = {"saldo": 10000.0}
+        await query.message.reply_text("🔄 *CONTA DEMO RESETADA!* Saldo restaurado para `$10,000.00`.", parse_mode="Markdown")
+        await enviar_menu_principal(query, context, nome_usuario)
 
 async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -369,16 +393,15 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     if "nome" not in context.user_data:
         context.user_data["nome"] = update.message.text.strip()
         nome_usuario = context.user_data["nome"]
+        CONTAS_DEMO[chat_id] = {"saldo": 10000.0}
 
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-        boas_vindas_ia = chamar_groq(f"Dê boas-vindas curtas, diretas e em maiúsculas para mim no Snap Sinais.", nome_usuario, modo_sinal=False)
-
+        boas_vindas_ia = chamar_groq(f"Dê boas-vindas curtas e em maiúsculas.", nome_usuario, modo_sinal=False)
         await context.bot.send_message(chat_id=chat_id, text=boas_vindas_ia.upper(), parse_mode="Markdown")
         await enviar_menu_principal(update, context, nome_usuario)
         return
 
     nome_usuario = context.user_data.get("nome", "Operador")
-
     contem_sinal = any(palavra in texto_usuario for palavra in PALAVRAS_SINAL)
     contem_cotacao = any(palavra in texto_usuario for palavra in PALAVRAS_COTACAO)
 
@@ -392,36 +415,13 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         elif "euro" in texto_usuario or "eur" in texto_usuario:
             await executar_analise_mercado(chat_id, context, nome_usuario, "EUR-USD", "Euro / Dólar (EUR/USD)")
             return
-        elif "libra" in texto_usuario or "gbp" in texto_usuario:
-            await executar_analise_mercado(chat_id, context, nome_usuario, "GBP-BRL", "Libra / Real (GBP/BRL)")
-            return
-        elif "ethereum" in texto_usuario or "eth" in texto_usuario:
-            await executar_analise_mercado(chat_id, context, nome_usuario, "ETH-BRL", "Ethereum / Real (ETH/BRL)")
-            return
-        elif "ouro" in texto_usuario or "xau" in texto_usuario:
-            await executar_analise_mercado(chat_id, context, nome_usuario, "XAU-USD", "Ouro / Dólar (XAU/USD)")
-            return
-        elif "iene" in texto_usuario or "jpy" in texto_usuario:
-            await executar_analise_mercado(chat_id, context, nome_usuario, "JPY-BRL", "Iene / Real (JPY/BRL)")
-            return
-        elif "australiano" in texto_usuario or "aud" in texto_usuario:
-            await executar_analise_mercado(chat_id, context, nome_usuario, "AUD-BRL", "Dólar Australiano / Real (AUD/BRL)")
-            return
-        elif "canadense" in texto_usuario or "cad" in texto_usuario:
-            await executar_analise_mercado(chat_id, context, nome_usuario, "CAD-BRL", "Dólar Canadense / Real (CAD/BRL)")
-            return
         else:
-            await context.bot.send_message(chat_id=chat_id, text="🔍 *ATIVO NÃO IDENTIFICADO.* ESPECIFIQUE (EX: *DÓLAR*, *BITCOIN*, *IENE*).", parse_mode="Markdown")
+            await context.bot.send_message(chat_id=chat_id, text="🔍 *ATIVO NÃO IDENTIFICADO.*", parse_mode="Markdown")
             return
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
     resposta_ia = chamar_groq(update.message.text.strip(), nome_usuario, modo_sinal=False)
-
-    if len(resposta_ia) > 4000:
-        for i in range(0, len(resposta_ia), 4000):
-            await context.bot.send_message(chat_id=chat_id, text=resposta_ia[i:i+4000])
-    else:
-        await context.bot.send_message(chat_id=chat_id, text=resposta_ia)
+    await context.bot.send_message(chat_id=chat_id, text=resposta_ia)
 
 # =========================
 # INICIALIZAÇÃO DO BOT
@@ -431,15 +431,14 @@ def main():
     request = HTTPXRequest(connection_pool_size=20, connect_timeout=60, read_timeout=60)
     app = Application.builder().token(TOKEN).request(request).build()
 
-    # REGISTRO DO TRATADOR DE ERROS
     app.add_error_handler(erro_handler)
-
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(botao_clicado))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_texto_livre))
 
-    print("✅ Bot configurado com sucesso! Aguardando interações no Telegram...", flush=True)
+    print("✅ Bot configurado com sucesso!", flush=True)
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
+
