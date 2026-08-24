@@ -2,3 +2,5 @@ python-telegram-bot
 requests
 yfinance
 python-dotenv
+git+https://github.com/n1ghtmare/iqoptionapi.git
+websocket-client
