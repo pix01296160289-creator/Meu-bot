@@ -9,7 +9,15 @@ import yfinance as yf
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
-from iqoptionapi.stable_api import IQ_Option
+
+# Importação corrigida para evitar incompatibilidade no Python 3.13
+try:
+    from iqoptionapi.stable_api import IQ_Option
+except ImportError:
+    try:
+        from iqoptionapi.api import IQ_Option
+    except ImportError:
+        from iqoptionapi import IQ_Option
 
 # =========================
 # CONFIGURAÇÃO E CHAVES (.env)
@@ -81,7 +89,6 @@ async def erro_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 # MAPA COMPLETO DE ATIVOS
 # =========================
 MAPA_ATIVOS = {
-    # 10 Pares de Moedas Principais (com formato para IQ Option e Yahoo)
     "eurusd": {"par_api": "EUR-USD", "iq_symbol": "EURUSD", "nome": "EUR/USD (Binária M5)", "multiplicador": 10000, "limite_variacao": 8.0},
     "gbpusd": {"par_api": "GBP-USD", "iq_symbol": "GBPUSD", "nome": "GBP/USD (Binária M5)", "multiplicador": 10000, "limite_variacao": 10.0},
     "usdjpy": {"par_api": "USD-JPY", "iq_symbol": "USDJPY", "nome": "USD/JPY (Binária M5)", "multiplicador": 100, "limite_variacao": 15.0},
@@ -92,8 +99,6 @@ MAPA_ATIVOS = {
     "usdbrl": {"par_api": "USD-BRL", "iq_symbol": "USDBRL", "nome": "Dólar / Real (USD/BRL)", "multiplicador": 10000, "limite_variacao": 15.0},
     "gbpbrl": {"par_api": "GBP-BRL", "iq_symbol": "GBPBRL", "nome": "Libra / Real (GBP/BRL)", "multiplicador": 10000, "limite_variacao": 20.0},
     "eurbrl": {"par_api": "EUR-BRL", "iq_symbol": "EURBRL", "nome": "Euro / Real (EUR/BRL)", "multiplicador": 10000, "limite_variacao": 20.0},
-    
-    # Cripto e Metais
     "btc": {"par_api": "BTC-BRL", "iq_symbol": "BTCBRL", "nome": "Bitcoin / Real (BTC/BRL)", "multiplicador": 1, "limite_variacao": 500.0},
     "eth": {"par_api": "ETH-BRL", "iq_symbol": "ETHBRL", "nome": "Ethereum / Real (ETH/BRL)", "multiplicador": 1, "limite_variacao": 150.0},
     "xau": {"par_api": "XAU-USD", "iq_symbol": "XAUUSD", "nome": "Ouro / Dólar (XAU/USD)", "multiplicador": 10, "limite_variacao": 25.0}
@@ -225,10 +230,9 @@ def executar_ordem_iq(iq_symbol, direcao_texto):
             if not conectou:
                 return "⚠️ Ordem não enviada (Sem conexão com IQ Option)."
 
-        # Converte a direção do sinal ("CALL" ou "PUT") para o formato da API ("call" ou "put")
         direcao = "call" if "CALL" in direcao_texto.upper() else "put"
-        valor_investimento = 2.0  # Valor padrão por entrada em dólares/reais da conta
-        expiracao_minutos = 5     # M5
+        valor_investimento = 2.0
+        expiracao_minutos = 5
 
         print(f"⚡ Enviando ordem para IQ Option: {iq_symbol} | {direcao.upper()} | ${valor_investimento}", flush=True)
         check_status, id_transacao = api_iq.buy(valor_investimento, iq_symbol, direcao, expiracao_minutos)
@@ -278,10 +282,8 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, sigla_chave, 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
     resposta_ia = chamar_groq(prompt_ia, nome_usuario, modo_sinal=True, mercado_aberto=mercado_aberto)
 
-    # Envia o sinal gerado pela IA no Telegram
     await context.bot.send_message(chat_id=chat_id, text=resposta_ia, parse_mode="Markdown")
 
-    # Se o mercado estiver aberto, dispara a ordem automática na IQ Option
     if mercado_aberto:
         resultado_corretora = executar_ordem_iq(iq_symbol, resposta_ia)
         await context.bot.send_message(chat_id=chat_id, text=resultado_corretora, parse_mode="Markdown")
@@ -369,7 +371,6 @@ async def botao_clicado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "menu_cripto":
         await mostrar_menu_cripto(query, nome_usuario)
     else:
-        # Extrai a chave do ativo do callback (ex: "btn_eurusd" -> "eurusd")
         sigla_chave = data.replace("btn_", "")
         if sigla_chave in MAPA_ATIVOS:
             info = MAPA_ATIVOS[sigla_chave]
@@ -432,6 +433,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
