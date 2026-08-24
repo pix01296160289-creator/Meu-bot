@@ -1,6 +1,5 @@
-  import os
+import os
 import sys
-import asyncio
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
@@ -27,11 +26,6 @@ if not TOKEN:
 if not GROQ_API_KEY:
     print("❌ ERRO: A chave GROQ_API_KEY não foi encontrada!", flush=True)
     sys.exit(1)
-
-# =========================
-# DICIONÁRIO DE CONTAS DEMO (Banca Virtual por Usuário)
-# =========================
-CONTAS_DEMO = {}
 
 # =========================
 # LISTAS DE PALAVRAS-CHAVE
@@ -105,23 +99,23 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
     if modo_sinal:
         if mercado_aberto:
             instrucao_sistema = (
-                f"Você é um terminal analítico financeiro estritamente profissional. "
-                f"Sua função é gerar um relatório técnico e a direção de operação (CALL para compra ou PUT para venda) baseada nos dados fornecidos. "
-                f"Nunca recuse uma solicitação de análise de mercado. "
+                f"Você é o analista sênior do 'Snap Sinais Bot' especializado em Opções Binárias e Forex. "
+                f"O operador se chama {nome_usuario}. "
+                f"O mercado está ABERTO. Monte um **Sinal de Trade Profissional**, incluindo obrigatoriamente o **Tempo de Expiração** para Opções Binárias (ex: M1, M5 ou M15). "
                 f"Siga rigorosamente este modelo:\n\n"
                 f"🎯 **SINAL DE ANÁLISE - [NOME DO ATIVO]**\n"
                 f"• **Status:** Mercado Aberto 🟢\n"
                 f"• **Tendência:** [Alta / Baixa / Lateral]\n"
                 f"• **Preço Atual:** [Valor]\n\n"
                 f"⏱️ **OPÇÃO BINÁRIA (EXPIRAÇÃO):**\n"
-                f"• **Tempo:** M5 - 5 Minutos\n"
-                f"• **Direção:** [CALL 🟢 (Compra) ou PUT 🔴 (Venda)]\n"
+                f"• **Tempo:** [Ex: M5 - 5 Minutos]\n"
+                f"• **Direção:** [CALL 🟢 (Compra) / PUT 🔴 (Venda)]\n"
                 f"• **Ponto de Entrada:** [Preço ideal]\n\n"
-                f"💡 *Recomendação de gestão de risco prudente.*"
+                f"💡 *[Recomendação prática curta]*"
             )
         else:
             instrucao_sistema = (
-                f"O mercado está FECHADO. Monte um **Panorama de Fechamento** seguindo exatamente este modelo:\n\n"
+                f"⚠️ O mercado está FECHADO. Monte um **Panorama de Fechamento** seguindo exatamente este modelo:\n\n"
                 f"🔒 **PANORAMA DE FECHAMENTO - [NOME DO ATIVO]**\n"
                 f"• **Status:** Mercado Fechado 🔴\n"
                 f"• **Último Preço (Fechamento):** [Valor]\n"
@@ -137,7 +131,7 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
             {"role": "system", "content": instrucao_sistema},
             {"role": "user", "content": pergunta_usuario}
         ],
-        "temperature": 0.3
+        "temperature": 0.5
     }
 
     try:
@@ -150,53 +144,7 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
         return f"❌ Erro de conexão com a Groq: {e}"
 
 # =========================
-# SIMULADOR M5 (CONTA DEMO COM VERIFICAÇÃO AUTOMÁTICA)
-# =========================
-async def monitorar_operacao_demo(chat_id, context, nome_ativo, par_api, preco_entrada, direcao, valor_investido):
-    await asyncio.sleep(300) # Aguarda 5 minutos
-
-    preco_final = obter_preco_atual(par_api)
-    
-    if chat_id not in CONTAS_DEMO:
-        CONTAS_DEMO[chat_id] = {"saldo": 10000.0}
-
-    conta = CONTAS_DEMO[chat_id]
-    payout = 0.85 
-    lucro = valor_investido * payout
-
-    resultado = "LOSS"
-    if direcao == "CALL" and preco_final > preco_entrada:
-        resultado = "WIN"
-    elif direcao == "PUT" and preco_final < preco_entrada:
-        resultado = "WIN"
-
-    if resultado == "WIN":
-        conta["saldo"] += lucro
-        mensagem_res = (
-            f"🎉 **RESULTADO DA CONTA DEMO (M5) - {nome_ativo.upper()}**\n\n"
-            f"🟢 **STATUS: WIN!**\n"
-            f"• Direção Escolhida: **{direcao}**\n"
-            f"• Preço de Entrada: `{preco_entrada:.5f}`\n"
-            f"• Preço após 5 min: `{preco_final:.5f}`\n"
-            f"• Lucro Obtido: `+${lucro:.2f}`\n"
-            f"💰 **Novo Saldo Demo:** `${conta['saldo']:.2f}`"
-        )
-    else:
-        conta["saldo"] -= valor_investido
-        mensagem_res = (
-            f"💥 **RESULTADO DA CONTA DEMO (M5) - {nome_ativo.upper()}**\n\n"
-            f"🔴 **STATUS: LOSS!**\n"
-            f"• Direção Escolhida: **{direcao}**\n"
-            f"• Preço de Entrada: `{preco_entrada:.5f}`\n"
-            f"• Preço após 5 min: `{preco_final:.5f}`\n"
-            f"• Valor Perdido: `-${valor_investido:.2f}`\n"
-            f"💰 **Novo Saldo Demo:** `${conta['saldo']:.2f}`"
-        )
-
-    await context.bot.send_message(chat_id=chat_id, text=mensagem_res, parse_mode="Markdown")
-
-# =========================
-# EXECUTAR ANÁLISE E ABRIR ORDEM DEMO COM BLINDAÇÃO
+# EXECUTAR ANÁLISE DE MERCADO
 # =========================
 async def executar_analise_mercado(chat_id, context, nome_usuario, par_api, nome_ativo):
     mercado_aberto, info_status = verificar_status_mercado(par_api)
@@ -221,58 +169,15 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, par_api, nome
 
     await context.bot.send_message(chat_id=chat_id, text=resposta_ia, parse_mode="Markdown")
 
-    # BLINDAÇÃO: Só abre a ordem demo se a IA realmente gerou o sinal sem recusas
-    if mercado_aberto and preco_atual_val > 0:
-        resposta_maiuscula = resposta_ia.upper()
-        
-        # Verifica se a IA recusou ou se o texto está incompleto
-        if "I'M SORRY" in resposta_maiuscula or "DESCULPE" in resposta_maiuscula or ("CALL" not in resposta_maiuscula and "PUT" not in resposta_maiuscula):
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="⚠️ *Terminal ocupado no momento.* A IA não retornou um sinal válido para abertura automática. Clique no botão novamente para tentar outro ciclo.",
-                parse_mode="Markdown"
-            )
-            return
-
-        if chat_id not in CONTAS_DEMO:
-            CONTAS_DEMO[chat_id] = {"saldo": 10000.0}
-
-        # Define com segurança a direção baseada estritamente na resposta da IA
-        if "CALL" in resposta_maiuscula and "PUT" not in resposta_maiuscula:
-            direcao_simulada = "CALL"
-        elif "PUT" in resposta_maiuscula and "CALL" not in resposta_maiuscula:
-            direcao_simulada = "PUT"
-        else:
-            # Caso ambíguo, define pelo termo que aparecer primeiro
-            pos_call = resposta_maiuscula.find("CALL")
-            pos_put = resposta_maiuscula.find("PUT")
-            if pos_call != -1 and (pos_put == -1 or pos_call < pos_put):
-                direcao_simulada = "CALL"
-            else:
-                direcao_simulada = "PUT"
-
-        valor_padrao = 100.0
-
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"🤖 **CONTA DEMO ATIVADA!**\nOrdem de **${valor_padrao:.2f}** aberta automaticamente em **{direcao_simulada}** para `{nome_ativo}`. O resultado sai em exatos 5 minutos!",
-            parse_mode="Markdown"
-        )
-
-        asyncio.create_task(monitorar_operacao_demo(chat_id, context, nome_ativo, par_api, preco_atual_val, direcao_simulada, valor_padrao))
-
 # =========================
 # COMANDOS E INTERFACE DO TELEGRAM
 # =========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("nome", None)
-    chat_id = update.effective_chat.id
-    CONTAS_DEMO[chat_id] = {"saldo": 10000.0}
-
     url_imagem = "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?q=80&w=1000&auto=format&fit=crop"
     legenda_boas_vindas = (
-        "🚀 **BEM-VINDO AO SNAP SINAIS (CONTA DEMO)** 📈\n\n"
-        "TERMINAL INTELIGENTE COM BANCA VIRTUAL DE $10,000.00.\n\n"
+        "🚀 **BEM-VINDO AO SNAP SINAIS** 📈\n\n"
+        "TERMINAL INTELIGENTE DE ANÁLISE DE MERCADO.\n\n"
         "PARA COMEÇAR, POR FAVOR, INFORME:\n"
         "👉 **QUAL É O SEU NOME OU APELIDO?**"
     )
@@ -283,26 +188,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(legenda_boas_vindas, parse_mode="Markdown")
 
 async def enviar_menu_principal(update_or_query, context, nome_usuario):
-    chat_id = update_or_query.message.chat_id if hasattr(update_or_query, "message") else update_or_query.effective_chat.id
-    if chat_id not in CONTAS_DEMO:
-        CONTAS_DEMO[chat_id] = {"saldo": 10000.0}
-
-    saldo_atual = CONTAS_DEMO[chat_id]["saldo"]
-
     teclado = [
-        [InlineKeyboardButton(f"💰 SALDO DEMO: ${saldo_atual:.2f}", callback_data="btn_saldo")],
-        [InlineKeyboardButton("📊 OPÇÕES BINÁRIAS (M5 DEMO)", callback_data="menu_binarias")],
+        [InlineKeyboardButton("📊 OPÇÕES BINÁRIAS (M5)", callback_data="menu_binarias")],
         [InlineKeyboardButton("💱 CÂMBIO (FOREX)", callback_data="menu_forex")],
         [InlineKeyboardButton("🪙 CRIPTOMOEDAS", callback_data="menu_cripto")],
-        [InlineKeyboardButton("🥇 METAIS & COMMODITIES", callback_data="menu_metais")],
-        [InlineKeyboardButton("🔄 RESETAR CONTA DEMO", callback_data="btn_reset")]
+        [InlineKeyboardButton("🥇 METAIS & COMMODITIES", callback_data="menu_metais")]
     ]
     reply_markup = InlineKeyboardMarkup(teclado)
 
     texto_menu = (
-        f"🎛️ **PAINEL EXECUTIVO DE OPERAÇÕES (DEMO)**\n"
-        f"👤 *OPERADOR:* **{nome_usuario.upper()}**\n"
-        f"💰 *BANCA VIRTUAL:* **${saldo_atual:.2f}**\n\n"
+        f"🎛️ **PAINEL EXECUTIVO DE OPERAÇÕES**\n"
+        f"👤 *OPERADOR:* **{nome_usuario.upper()}**\n\n"
         f"SELECIONE A CATEGORIA DESEJADA ABAIXO:"
     )
 
@@ -327,7 +223,7 @@ async def mostrar_menu_binarias(query, nome_usuario):
         [InlineKeyboardButton("⬅️ VOLTAR AO MENU PRINCIPAL", callback_data="menu_principal")]
     ]
     reply_markup = InlineKeyboardMarkup(teclado)
-    await query.edit_message_text(f"📊 **OPÇÕES BINÁRIAS (CONTA DEMO)**\nEscolha o ativo para abrir ordem automática de 5 min:", reply_markup=reply_markup, parse_mode="Markdown")
+    await query.edit_message_text(f"📊 **OPÇÕES BINÁRIAS (M5)**\nEscolha o ativo para análise:", reply_markup=reply_markup, parse_mode="Markdown")
 
 async def mostrar_menu_forex(query, nome_usuario):
     teclado = [
@@ -372,9 +268,6 @@ async def botao_clicado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await mostrar_menu_cripto(query, nome_usuario)
     elif data == "menu_metais":
         await mostrar_menu_metais(query, nome_usuario)
-    elif data == "btn_saldo":
-        saldo = CONTAS_DEMO.get(chat_id, {}).get("saldo", 10000.0)
-        await query.answer(f"Seu saldo demo atual é de: ${saldo:.2f}", show_alert=True)
 
     elif data == "btn_bin_eurusd":
         await executar_analise_mercado(chat_id, context, nome_usuario, "EUR-USD", "EUR/USD (Opções Binárias)")
@@ -401,11 +294,6 @@ async def botao_clicado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "btn_xau":
         await executar_analise_mercado(chat_id, context, nome_usuario, "XAU-USD", "Ouro / Dólar (XAU/USD)")
 
-    elif data == "btn_reset":
-        CONTAS_DEMO[chat_id] = {"saldo": 10000.0}
-        await query.message.reply_text("🔄 *CONTA DEMO RESETADA!* Saldo restaurado para `$10,000.00`.", parse_mode="Markdown")
-        await enviar_menu_principal(query, context, nome_usuario)
-
 async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     texto_usuario = update.message.text.strip().lower()
@@ -413,7 +301,6 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     if "nome" not in context.user_data:
         context.user_data["nome"] = update.message.text.strip()
         nome_usuario = context.user_data["nome"]
-        CONTAS_DEMO[chat_id] = {"saldo": 10000.0}
 
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
         boas_vindas_ia = chamar_groq(f"Dê boas-vindas curtas e em maiúsculas.", nome_usuario, modo_sinal=False)
@@ -461,5 +348,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
