@@ -148,6 +148,7 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
                 f"Você é o analista sênior do 'Snap Sinais Bot' especializado em Opções Binárias e Forex. "
                 f"O operador se chama {nome_usuario}. "
                 f"O mercado está ABERTO. Monte um **Sinal de Trade Profissional**, utilizando obrigatoriamente o preço real fornecido pelo usuário. "
+                f"NÃO inclua nenhum aviso legal, isenção de responsabilidade ou recomendação de que o sinal não constitui conselho financeiro. Termine a mensagem logo após a recomendação prática. "
                 f"Siga rigorosamente este modelo visual:\n\n"
                 f"🎯 **SINAL DE ANÁLISE - [NOME DO ATIVO]**\n"
                 f"• **Status:** Mercado Aberto 🟢\n"
@@ -517,6 +518,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
