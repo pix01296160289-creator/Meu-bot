@@ -1,7 +1,6 @@
 import os
 import sys
 import asyncio
-import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
@@ -31,16 +30,6 @@ if not GROQ_API_KEY:
     sys.exit(1)
 
 # =========================
-# CONFIGURAÇÕES GERAIS
-# =========================
-COOLDOWN_SINAL = 45          # segundos entre sinais
-CACHE_PRECO_SEGUNDOS = 4     # cache curto do preço
-MAX_TENTATIVAS_PRECO = 7     # máximo de tentativas para pegar preço "quente"
-
-# Cache simples de preço em memória
-_cache_preco = {}  # {par_api: (preco, timestamp)}
-
-# =========================
 # LISTAS DE PALAVRAS-CHAVE
 # =========================
 PALAVRAS_SINAL = ["sinal", "análise", "mercado", "entrada", "stop"]
@@ -52,14 +41,6 @@ PALAVRAS_COTACAO = ["cotação", "preço", "valor", "quanto está"]
 # =========================
 async def erro_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     print(f"❌ ERRO CAPTURADO NO BOT: {context.error}", flush=True)
-    try:
-        if update and hasattr(update, "effective_chat") and update.effective_chat:
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text="⚠️ Ocorreu um erro interno. Tente novamente em alguns segundos."
-            )
-    except Exception:
-        pass
 
 # =========================
 # MAPA COMPLETO DE ATIVOS
@@ -103,17 +84,9 @@ def verificar_status_mercado(par_api):
     return True, f"🟢 **MERCADO ABERTO**\n📅 *DATA/HORA (BR):* {data_formatada}"
 
 # =========================
-# OBTER PREÇO (YAHOO FINANCE) + CACHE
+# OBTER PREÇO (YAHOO FINANCE)
 # =========================
-def obter_preco_atual(par_api, forcar=False):
-    agora = time.time()
-
-    # Usa cache se ainda estiver fresco
-    if not forcar and par_api in _cache_preco:
-        preco_cache, ts = _cache_preco[par_api]
-        if agora - ts < CACHE_PRECO_SEGUNDOS and preco_cache > 0:
-            return preco_cache
-
+def obter_preco_atual(par_api):
     try:
         ticker_map = {
             "EUR-USD": "EURUSD=X", "GBP-USD": "GBPUSD=X", "USD-JPY": "USDJPY=X",
@@ -131,10 +104,7 @@ def obter_preco_atual(par_api, forcar=False):
             preco_recente = dados["Close"].iloc[-1]
             if hasattr(preco_recente, "item"):
                 preco_recente = preco_recente.item()
-            preco = float(preco_recente)
-            if preco > 0:
-                _cache_preco[par_api] = (preco, agora)
-            return preco
+            return float(preco_recente)
         else:
             ticker_obj = yf.Ticker(ticker_symbol)
             hist = ticker_obj.history(period="1d")
@@ -142,13 +112,10 @@ def obter_preco_atual(par_api, forcar=False):
                 preco_recente = hist["Close"].iloc[-1]
                 if hasattr(preco_recente, "item"):
                     preco_recente = preco_recente.item()
-                preco = float(preco_recente)
-                if preco > 0:
-                    _cache_preco[par_api] = (preco, agora)
-                return preco
+                return float(preco_recente)
         return 0.0
     except Exception as e:
-        print(f"❌ Erro ao buscar preço ({par_api}): {e}", flush=True)
+        print(f"❌ Erro ao buscar preço: {e}", flush=True)
         return 0.0
 
 # =========================
@@ -205,75 +172,35 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
         if response.status_code == 200:
             return response.json()['choices'][0]['message']['content']
         else:
-            print(f"⚠️ Groq status {response.status_code}: {response.text[:300]}", flush=True)
-            return f"⚠️ Erro na API da Groq (código {response.status_code}). Tente novamente em instantes."
+            return f"⚠️ Erro na API da Groq: {response.status_code}"
     except Exception as e:
-        print(f"❌ Erro de conexão com a Groq: {e}", flush=True)
-        return "❌ Não foi possível conectar com a IA no momento. Tente novamente em alguns segundos."
+        return f"❌ Erro de conexão com a Groq: {e}"
 
 # =========================
-# HELPER: enviar mensagem com proteção Markdown
-# =========================
-async def enviar_mensagem_segura(bot, chat_id, texto, parse_mode="Markdown"):
-    try:
-        await bot.send_message(chat_id=chat_id, text=texto, parse_mode=parse_mode)
-    except Exception:
-        # Se o Markdown quebrar, envia em texto puro
-        try:
-            await bot.send_message(chat_id=chat_id, text=texto)
-        except Exception as e:
-            print(f"❌ Falha ao enviar mensagem: {e}", flush=True)
-
-# =========================
-# EXECUTAR ANÁLISE DE MERCADO (preço quente inteligente)
+# EXECUTAR ANÁLISE DE MERCADO
 # =========================
 async def executar_analise_mercado(chat_id, context, nome_usuario, sigla_chave, par_api, nome_ativo):
-    # Cooldown
-    agora = time.time()
-    ultimo = context.user_data.get("ultimo_sinal", 0)
-    if agora - ultimo < COOLDOWN_SINAL:
-        restante = int(COOLDOWN_SINAL - (agora - ultimo))
-        await enviar_mensagem_segura(
-            context.bot, chat_id,
-            f"⏳ Aguarde **{restante} segundos** antes de pedir outro sinal."
-        )
-        return
-
-    context.user_data["ultimo_sinal"] = agora
-
     mercado_aberto, info_status = verificar_status_mercado(par_api)
 
-    await enviar_mensagem_segura(
-        context.bot, chat_id,
-        f"🔍 *CAPTURANDO PREÇO QUENTE PARA {nome_ativo.upper()}...*\n\n{info_status}"
+    await context.bot.send_message(
+        chat_id=chat_id, 
+        text=f"🔍 *CAPTURANDO PREÇO INICIAL E AGUARDANDO ATUALIZAÇÃO PARA {nome_ativo.upper()}...*\n\n{info_status}", 
+        parse_mode="Markdown"
     )
 
-    # Pega preço inicial
-    preco_inicial = obter_preco_atual(par_api, forcar=True)
+    preco_inicial = obter_preco_atual(par_api)
     preco_atual_val = preco_inicial
 
-    # Espera o preço mudar (preço "quente"), no máximo MAX_TENTATIVAS_PRECO
-    for tentativa in range(MAX_TENTATIVAS_PRECO):
+    for _ in range(12):
         await asyncio.sleep(1)
-        novo_preco = obter_preco_atual(par_api, forcar=True)
-
-        if novo_preco > 0:
+        novo_preco = obter_preco_atual(par_api)
+        if novo_preco > 0 and novo_preco != preco_inicial:
             preco_atual_val = novo_preco
-            # Se mudou em relação ao inicial, consideramos quente e paramos
-            if preco_inicial > 0 and abs(novo_preco - preco_inicial) > 1e-8:
-                break
-            # Se o inicial era zero e agora temos valor, também aceitamos
-            if preco_inicial == 0:
-                break
+            break
+        elif novo_preco > 0:
+            preco_atual_val = novo_preco
 
-    if preco_atual_val <= 0:
-        await enviar_mensagem_segura(
-            context.bot, chat_id,
-            "❌ Não foi possível obter o preço atualizado deste ativo no momento.\nTente novamente em alguns segundos."
-        )
-        return
-
-    preco_atual_str = f"{preco_atual_val:.5f}" if preco_atual_val < 1000 else f"{preco_atual_val:.2f}"
+    preco_atual_str = f"{preco_atual_val:.5f}" if preco_atual_val > 0 else "N/A"
     status_texto = "Aberto 🟢" if mercado_aberto else "Fechado 🔴"
 
     dados_mercado = (
@@ -287,7 +214,7 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, sigla_chave, 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
     resposta_ia = chamar_groq(prompt_ia, nome_usuario, modo_sinal=True, mercado_aberto=mercado_aberto)
 
-    await enviar_mensagem_segura(context.bot, chat_id, resposta_ia)
+    await context.bot.send_message(chat_id=chat_id, text=resposta_ia, parse_mode="Markdown")
 
 # =========================
 # COMANDOS E INTERFACE DO TELEGRAM
@@ -304,7 +231,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         await update.message.reply_photo(photo=url_imagem, caption=legenda_boas_vindas, parse_mode="Markdown")
-    except Exception:
+    except:
         await update.message.reply_text(legenda_boas_vindas, parse_mode="Markdown")
 
 async def enviar_menu_principal(update_or_query, context, nome_usuario):
@@ -326,7 +253,7 @@ async def enviar_menu_principal(update_or_query, context, nome_usuario):
     else:
         try:
             await update_or_query.edit_message_text(texto_menu, reply_markup=reply_markup, parse_mode="Markdown")
-        except Exception:
+        except:
             await update_or_query.message.reply_text(texto_menu, reply_markup=reply_markup, parse_mode="Markdown")
 
 async def mostrar_menu_binarias(query, nome_usuario):
@@ -387,7 +314,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
         boas_vindas_ia = chamar_groq(f"Dê boas-vindas curtas e em maiúsculas.", nome_usuario, modo_sinal=False)
-        await enviar_mensagem_segura(context.bot, chat_id, boas_vindas_ia.upper())
+        await context.bot.send_message(chat_id=chat_id, text=boas_vindas_ia.upper(), parse_mode="Markdown")
         await enviar_menu_principal(update, context, nome_usuario)
         return
 
@@ -409,25 +336,25 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
             await executar_analise_mercado(chat_id, context, nome_usuario, "eurusd", info["par_api"], info["nome"])
             return
         else:
-            await enviar_mensagem_segura(context.bot, chat_id, "🔍 *ATIVO NÃO IDENTIFICADO.* Use o menu ou diga o nome do ativo.")
+            await context.bot.send_message(chat_id=chat_id, text="🔍 *ATIVO NÃO IDENTIFICADO.*", parse_mode="Markdown")
             return
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
     resposta_ia = chamar_groq(update.message.text.strip(), nome_usuario, modo_sinal=False)
-    await enviar_mensagem_segura(context.bot, chat_id, resposta_ia)
+    await context.bot.send_message(chat_id=chat_id, text=resposta_ia)
 
 # =========================
 # INICIALIZAÇÃO DO BOT
 # =========================
 def main():
-    print("🚀 Iniciando o Snap Sinais Bot (versão melhorada)...", flush=True)
+    print("🚀 Iniciando o Snap Sinais Bot...", flush=True)
     request = HTTPXRequest(connection_pool_size=20, connect_timeout=60, read_timeout=60)
     app = Application.builder().token(TOKEN).request(request).build()
 
     app.add_error_handler(erro_handler)
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(botao_clicado))
-    app.add_handler(MessageHandler(filters.TEXT & \~filters.COMMAND, responder_texto_livre))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_texto_livre))
 
     print("✅ Bot configurado e pronto para rodar!", flush=True)
     app.run_polling(drop_pending_updates=True)
