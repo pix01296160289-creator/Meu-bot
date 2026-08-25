@@ -84,7 +84,7 @@ def verificar_status_mercado(par_api):
     return True, f"🟢 **MERCADO ABERTO**\n📅 *DATA/HORA (BR):* {data_formatada}"
 
 # =========================
-# OBTER PREÇO (YAHOO FINANCE)
+# OBTER PREÇO (YAHOO FINANCE - CORRIGIDO AO VIVO)
 # =========================
 def obter_preco_atual(par_api):
     try:
@@ -99,23 +99,19 @@ def obter_preco_atual(par_api):
         if not ticker_symbol:
             return 0.0
 
-        dados = yf.download(ticker_symbol, period="1d", interval="1m", progress=False)
+        # Força a busca direta no histórico de 1 dia com intervalo de 1 minuto sem cache travado
+        ticker_obj = yf.Ticker(ticker_symbol)
+        dados = ticker_obj.history(period="1d", interval="1m")
+        
         if not dados.empty and "Close" in dados.columns:
             preco_recente = dados["Close"].iloc[-1]
             if hasattr(preco_recente, "item"):
                 preco_recente = preco_recente.item()
             return float(preco_recente)
-        else:
-            ticker_obj = yf.Ticker(ticker_symbol)
-            hist = ticker_obj.history(period="1d")
-            if not hist.empty:
-                preco_recente = hist["Close"].iloc[-1]
-                if hasattr(preco_recente, "item"):
-                    preco_recente = preco_recente.item()
-                return float(preco_recente)
+            
         return 0.0
     except Exception as e:
-        print(f"❌ Erro ao buscar preço: {e}", flush=True)
+        print(f"❌ Erro ao buscar preço atualizado: {e}", flush=True)
         return 0.0
 
 # =========================
@@ -361,3 +357,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
