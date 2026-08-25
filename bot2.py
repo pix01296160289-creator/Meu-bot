@@ -84,7 +84,7 @@ def verificar_status_mercado(par_api):
     return True, f"🟢 **MERCADO ABERTO**\n📅 *DATA/HORA (BR):* {data_formatada}"
 
 # =========================
-# OBTER PREÇO (YAHOO FINANCE AO VIVO)
+# OBTER PREÇO (YAHOO FINANCE)
 # =========================
 def obter_preco_atual(par_api):
     try:
@@ -99,18 +99,22 @@ def obter_preco_atual(par_api):
         if not ticker_symbol:
             return 0.0
 
-        ticker_obj = yf.Ticker(ticker_symbol)
-        dados = ticker_obj.history(period="1d", interval="1m")
-        
+        dados = yf.download(ticker_symbol, period="1d", interval="1m", progress=False)
         if not dados.empty and "Close" in dados.columns:
             preco_recente = dados["Close"].iloc[-1]
             if hasattr(preco_recente, "item"):
                 preco_recente = preco_recente.item()
             return float(preco_recente)
-            
+        else:
+            ticker_obj = yf.Ticker(ticker_symbol)
+            hist = ticker_obj.history(period="1d")
+            if not hist.empty:
+                preco_recente = hist["Close"].iloc[-1]
+                if hasattr(preco_recente, "item"):
+                    preco_recente = preco_recente.item()
+                return float(preco_recente)
         return 0.0
     except Exception as e:
-        print(f"❌ Erro ao buscar preço atualizado: {e}", flush=True)
         return 0.0
 
 # =========================
@@ -169,47 +173,60 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
         else:
             return f"⚠️ Erro na API da Groq: {response.status_code}"
     except Exception as e:
-        return f"❌ Erro de conexão com a Groq: {e}"
+        return f"❌ Erro de conexão com la Groq: {e}"
 
 # =========================
-# EXECUTAR ANÁLISE DE MERCADO (COM VARIAÇÃO REAL A CADA SEGUNDO)
+# MONITORAMENTO CONTÍNUO E ANÁLISE REAL
 # =========================
 async def executar_analise_mercado(chat_id, context, nome_usuario, sigla_chave, par_api, nome_ativo):
     mercado_aberto, info_status = verificar_status_mercado(par_api)
 
     await context.bot.send_message(
         chat_id=chat_id, 
-        text=f"🔍 *CAPTURANDO PREÇO AO VIVO E AGUARDANDO VARIAÇÃO PARA {nome_ativo.upper()}...*\n\n{info_status}", 
+        text=f"👀 *MONITORANDO EM TEMPO REAL: {nome_ativo.upper()}*\n\nO bot está observando o mercado. Assim que houver uma alteração real de preço, o sinal será enviado!\n\n{info_status}", 
         parse_mode="Markdown"
     )
 
-    # Executa as 8 tentativas checando o preço fresco a cada 1 segundo
-    preco_atual_val = 0.0
-    for _ in range(8):
-        await asyncio.sleep(1)
-        novo_preco = obter_preco_atual(par_api)
-        if novo_preco > 0:
-            preco_atual_val = novo_preco
+    # Captura o preço inicial de referência
+    preco_anterior = 0.0
+    while preco_anterior == 0.0:
+        preco_anterior = obter_preco_atual(par_api)
+        if preco_anterior == 0.0:
+            await asyncio.sleep(3)
 
-    # Se por acaso falhar, tenta uma última vez
-    if preco_atual_val == 0.0:
-        preco_atual_val = obter_preco_atual(par_api)
+    print(f"📊 Monitor ativado para {nome_ativo}. Preço base: {preco_anterior}", flush=True)
 
-    preco_atual_str = f"{preco_atual_val:.5f}" if preco_atual_val > 0 else "N/A"
-    status_texto = "Aberto 🟢" if mercado_aberto else "Fechado 🔴"
+    # Loop contínuo de monitoramento em segundo plano
+    while True:
+        try:
+            await asyncio.sleep(5) # Checa a cada 5 segundos em silêncio
+            preco_atual = obter_preco_atual(par_api)
+            
+            # Se conseguiu o preço e ele MUDOU em relação ao anterior:
+            if preco_atual > 0 and preco_atual != preco_anterior:
+                print(f"🚨 Mudança real em {nome_ativo}: {preco_anterior} ➔ {preco_atual}", flush=True)
+                
+                preco_atual_str = f"{preco_atual:.5f}"
+                status_texto = "Aberto 🟢" if mercado_aberto else "Fechado 🔴"
 
-    dados_mercado = (
-        f"Ativo: {nome_ativo} | "
-        f"Status do Mercado: {status_texto} | "
-        f"Preço Atualizado Confirmado: {preco_atual_str}"
-    )
+                dados_mercado = (
+                    f"Ativo: {nome_ativo} | "
+                    f"Status do Mercado: {status_texto} | "
+                    f"Preço Atualizado Confirmado: {preco_atual_str}"
+                )
 
-    prompt_ia = f"Gere o relatório analítico ou de fechamento para os dados reais: {dados_mercado}. Utilize obrigatoriamente o Preço Atualizado Confirmado informado."
+                prompt_ia = f"Gere o relatório analítico ou de fechamento para os dados reais: {dados_mercado}. Utilize obrigatoriamente o Preço Atualizado Confirmado informado."
 
-    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-    resposta_ia = chamar_groq(prompt_ia, nome_usuario, modo_sinal=True, mercado_aberto=mercado_aberto)
+                await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+                resposta_ia = chamar_groq(prompt_ia, nome_usuario, modo_sinal=True, mercado_aberto=mercado_aberto)
 
-    await context.bot.send_message(chat_id=chat_id, text=resposta_ia, parse_mode="Markdown")
+                await context.bot.send_message(chat_id=chat_id, text=resposta_ia, parse_mode="Markdown")
+                
+                # Encerra o monitoramento desta seleção após disparar o sinal
+                break
+                
+        except Exception as e:
+            await asyncio.sleep(5)
 
 # =========================
 # COMANDOS E INTERFACE DO TELEGRAM
@@ -297,7 +314,10 @@ async def botao_clicado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sigla_chave = data.replace("btn_", "")
         if sigla_chave in MAPA_ATIVOS:
             info = MAPA_ATIVOS[sigla_chave]
-            await executar_analise_mercado(chat_id, context, nome_usuario, sigla_chave, info["par_api"], info["nome"])
+            # Inicia o monitoramento em background usando create_task para não travar o bot
+            context.application.create_task(
+                executar_analise_mercado(chat_id, context, nome_usuario, sigla_chave, info["par_api"], info["nome"])
+            )
 
 async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -320,15 +340,21 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     if contem_sinal or contem_cotacao:
         if "dólar" in texto_usuario or "usdbrl" in texto_usuario:
             info = MAPA_ATIVOS["usdbrl"]
-            await executar_analise_mercado(chat_id, context, nome_usuario, "usdbrl", info["par_api"], info["nome"])
+            context.application.create_task(
+                executar_analise_mercado(chat_id, context, nome_usuario, "usdbrl", info["par_api"], info["nome"])
+            )
             return
         elif "bitcoin" in texto_usuario or "btc" in texto_usuario:
             info = MAPA_ATIVOS["btc"]
-            await executar_analise_mercado(chat_id, context, nome_usuario, "btc", info["par_api"], info["nome"])
+            context.application.create_task(
+                executar_analise_mercado(chat_id, context, nome_usuario, "btc", info["par_api"], info["nome"])
+            )
             return
         elif "euro" in texto_usuario or "eur" in texto_usuario:
             info = MAPA_ATIVOS["eurusd"]
-            await executar_analise_mercado(chat_id, context, nome_usuario, "eurusd", info["par_api"], info["nome"])
+            context.application.create_task(
+                executar_analise_mercado(chat_id, context, nome_usuario, "eurusd", info["par_api"], info["nome"])
+            )
             return
         else:
             await context.bot.send_message(chat_id=chat_id, text="🔍 *ATIVO NÃO IDENTIFICADO.*", parse_mode="Markdown")
@@ -356,5 +382,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
