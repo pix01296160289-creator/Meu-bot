@@ -84,7 +84,7 @@ def verificar_status_mercado(par_api):
     return True, f"🟢 **MERCADO ABERTO**\n📅 *DATA/HORA (BR):* {data_formatada}"
 
 # =========================
-# OBTER PREÇO (YAHOO FINANCE - CORRIGIDO AO VIVO)
+# OBTER PREÇO (YAHOO FINANCE AO VIVO)
 # =========================
 def obter_preco_atual(par_api):
     try:
@@ -99,7 +99,6 @@ def obter_preco_atual(par_api):
         if not ticker_symbol:
             return 0.0
 
-        # Força a busca direta no histórico de 1 dia com intervalo de 1 minuto sem cache travado
         ticker_obj = yf.Ticker(ticker_symbol)
         dados = ticker_obj.history(period="1d", interval="1m")
         
@@ -173,28 +172,28 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
         return f"❌ Erro de conexão com a Groq: {e}"
 
 # =========================
-# EXECUTAR ANÁLISE DE MERCADO
+# EXECUTAR ANÁLISE DE MERCADO (COM VARIAÇÃO REAL A CADA SEGUNDO)
 # =========================
 async def executar_analise_mercado(chat_id, context, nome_usuario, sigla_chave, par_api, nome_ativo):
     mercado_aberto, info_status = verificar_status_mercado(par_api)
 
     await context.bot.send_message(
         chat_id=chat_id, 
-        text=f"🔍 *CAPTURANDO PREÇO INICIAL E AGUARDANDO ATUALIZAÇÃO PARA {nome_ativo.upper()}...*\n\n{info_status}", 
+        text=f"🔍 *CAPTURANDO PREÇO AO VIVO E AGUARDANDO VARIAÇÃO PARA {nome_ativo.upper()}...*\n\n{info_status}", 
         parse_mode="Markdown"
     )
 
-    preco_inicial = obter_preco_atual(par_api)
-    preco_atual_val = preco_inicial
-
-    for _ in range(12):
+    # Executa as 8 tentativas checando o preço fresco a cada 1 segundo
+    preco_atual_val = 0.0
+    for _ in range(8):
         await asyncio.sleep(1)
         novo_preco = obter_preco_atual(par_api)
-        if novo_preco > 0 and novo_preco != preco_inicial:
+        if novo_preco > 0:
             preco_atual_val = novo_preco
-            break
-        elif novo_preco > 0:
-            preco_atual_val = novo_preco
+
+    # Se por acaso falhar, tenta uma última vez
+    if preco_atual_val == 0.0:
+        preco_atual_val = obter_preco_atual(par_api)
 
     preco_atual_str = f"{preco_atual_val:.5f}" if preco_atual_val > 0 else "N/A"
     status_texto = "Aberto 🟢" if mercado_aberto else "Fechado 🔴"
@@ -357,4 +356,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
