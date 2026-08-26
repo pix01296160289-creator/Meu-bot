@@ -33,8 +33,8 @@ if not GROQ_API_KEY:
 # LISTAS DE PALAVRAS-CHAVE
 # =========================
 PALAVRAS_SINAL = ["sinal", "análise", "mercado", "entrada", "stop"]
-PALAVRAS_CHAT = ["oi", "olá", "bom dia", "boa tarde", "boa noite", "ajuda", "tudo bem", "iniciar", "start"]
-PALAVRAS_COTACAO = ["cotação", "preço", "valor", "quanto está", "gráfico"]
+PALAVRAS_CHAT = ["oi", "olá", "bom dia", "boa tarde", "boa noite", "ajuda", "tudo bem"]
+PALAVRAS_COTACAO = ["cotação", "preço", "valor", "quanto está"]
 
 # =========================
 # TRATADOR DE ERROS GLOBAL
@@ -115,7 +115,6 @@ def obter_preco_atual(par_api):
                 return float(preco_recente)
         return 0.0
     except Exception as e:
-        print(f"❌ Erro ao obter preço do Yahoo Finance: {e}", flush=True)
         return 0.0
 
 # =========================
@@ -131,56 +130,50 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False, mercad
     if modo_sinal:
         if mercado_aberto:
             instrucao_sistema = (
-                f"Você é o analista sênior do 'Snap Sinais Pro' especializado em Opções Binárias e Forex. "
-                f"O operador se chama {nome_usuario}. O mercado está ABERTO. "
-                f"Analise os dados e gere o relatório seguindo estritamente este modelo visual, utilizando obrigatoriamente o preço real fornecido. "
-                f"NÃO use itálico em excesso, não coloque aviso legal e termine a mensagem logo após a recomendação prática.\n\n"
-                f"🎯 **ANÁLISE TÉCNICA - [NOME DO ATIVO]**\n"
+                f"Você é o analista sênior do 'Snap Sinais Bot' especializado em Opções Binárias e Forex. "
+                f"O operador se chama {nome_usuario}. "
+                f"O mercado está ABERTO. Monte um **Sinal de Trade Profissional**, utilizando obrigatoriamente o preço real fornecido. "
+                f"NÃO inclua nenhum aviso legal. Termine a mensagem logo após a recomendação prática. "
+                f"Siga rigorosamente este modelo visual:\n\n"
+                f"🎯 **SINAL DE ANÁLISE - [NOME DO ATIVO]**\n"
                 f"• **Status:** Mercado Aberto 🟢\n"
-                f"• **Tendência:** [Alta Forte / Alta Moderada / Baixa Forte / Baixa Moderada / Lateral]\n"
-                f"• **Preço Atual:** [Valor exato fornecido]\n"
-                f"• **Volatilidade:** [Alta / Média / Baixa]\n\n"
-                f"⏱️ **RECOMENDAÇÃO (EXPIRAÇÃO):**\n"
-                f"• **Ativo:** [NOME DO ATIVO]\n"
-                f"• **Tempo Gráfico:** M5\n"
-                f"• **Ação:** [COMPRA 🟢 (CALL) / VENDA 🔴 (PUT)]\n"
-                f"• **Ponto de Entrada Sugerido:** [Preço ideal para entrada]\n"
-                f"• **Stop Loss Sugerido:** [Nível de preço para proteção]\n"
-                f"• **Take Profit Sugerido:** [Nível de preço para alvo]\n\n"
-                f"💡 *[Análise breve de uma frase justificando a ação]*"
+                f"• **Tendência:** [Alta / Baixa / Lateral]\n"
+                f"• **Preço Atual:** [Valor exato fornecido]\n\n"
+                f"⏱️ **OPÇÃO BINÁRIA (EXPIRAÇÃO):**\n"
+                f"• **Tempo:** M5 - 5 Minutos\n"
+                f"• **Direção:** [CALL 🟢 (Compra) / PUT 🔴 (Venda)]\n"
+                f"• **Ponto de Entrada:** [Preço ideal]\n\n"
+                f"💡 *[Recomendação prática curta]*"
             )
         else:
             instrucao_sistema = (
-                f"⚠️ O mercado está FECHADO. Monte o **Panorama de Fechamento** para o ativo, focado na tendência macro, "
-                f"seguindo estritamente este modelo e usando os dados fornecidos:\n\n"
+                f"⚠️ O mercado está FECHADO. Monte um **Panorama de Fechamento** seguindo exatamente este modelo:\n\n"
                 f"🔒 **PANORAMA DE FECHAMENTO - [NOME DO ATIVO]**\n"
                 f"• **Status:** Mercado Fechado 🔴\n"
                 f"• **Último Preço:** [Valor]\n"
-                f"• **Tendência de Longo Prazo:** [Alta / Baixa / Lateral]\n\n"
-                f"💡 *[Comentário de uma frase sobre o comportamento do ativo no fechamento]*"
+                f"• **Tendência de Fundo:** [Alta / Baixa / Lateral]\n\n"
+                f"💡 *Mercado fechado no momento. Reabertura domingo às 18:00.*"
             )
     else:
-        instrucao_sistema = f"Você é o assistente executivo senior do 'Snap Sinais Pro'. O usuário se chama {nome_usuario}. Mantenha um tom profissional, eficiente e direto."
+        instrucao_sistema = f"Você é o assistente executivo do 'Snap Sinais Bot'. O usuário se chama {nome_usuario}."
 
     payload = {
-        "model": "llama-3.3-70b-versatile",
+        "model": "openai/gpt-oss-120b",
         "messages": [
             {"role": "system", "content": instrucao_sistema},
             {"role": "user", "content": pergunta_usuario}
         ],
-        "temperature": 0.4,
-        "max_tokens": 1000
+        "temperature": 0.5
     }
 
     try:
-        response = requests.post(url, json=payload, headers=headers, timeout=60)
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
         if response.status_code == 200:
             return response.json()['choices'][0]['message']['content']
         else:
             return f"⚠️ Erro na API da Groq: {response.status_code}"
     except Exception as e:
-        print(f"❌ Erro de conexão com a Groq: {e}", flush=True)
-        return f"❌ Erro de conexão com a API da Groq: {e}"
+        return f"❌ Erro de conexão com la Groq: {e}"
 
 # =========================
 # MONITORAMENTO CONTÍNUO E ANÁLISE REAL
@@ -190,29 +183,26 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, sigla_chave, 
 
     await context.bot.send_message(
         chat_id=chat_id, 
-        text=f"📡 **INICIANDO ANÁLISE EM TEMPO REAL: {nome_ativo.upper()}** 📊\n\nO terminal está processando os dados. Aguarde a confirmação do sinal.\n\n{info_status}", 
+        text=f"👀 *MONITORANDO EM TEMPO REAL: {nome_ativo.upper()}*\n\nO bot está observando o mercado. Assim que houver uma alteração real de preço, o sinal será enviado!\n\n{info_status}", 
         parse_mode="Markdown"
     )
 
+    # Captura o preço inicial de referência
     preco_anterior = 0.0
-    tentativas = 0
-    while preco_anterior == 0.0 and tentativas < 10:
+    while preco_anterior == 0.0:
         preco_anterior = obter_preco_atual(par_api)
         if preco_anterior == 0.0:
-            tentativas += 1
-            await asyncio.sleep(2)
-    
-    if preco_anterior == 0.0:
-        await context.bot.send_message(chat_id=chat_id, text=f"❌ Falha ao obter dados do mercado para {nome_ativo}. Tente novamente mais tarde.", parse_mode="Markdown")
-        return
+            await asyncio.sleep(3)
 
     print(f"📊 Monitor ativado para {nome_ativo}. Preço base: {preco_anterior}", flush=True)
 
+    # Loop contínuo de monitoramento em segundo plano
     while True:
         try:
-            await asyncio.sleep(3)
+            await asyncio.sleep(5) # Checa a cada 5 segundos em silêncio
             preco_atual = obter_preco_atual(par_api)
             
+            # Se conseguiu o preço e ele MUDOU em relação ao anterior:
             if preco_atual > 0 and preco_atual != preco_anterior:
                 print(f"🚨 Mudança real em {nome_ativo}: {preco_anterior} ➔ {preco_atual}", flush=True)
                 
@@ -225,16 +215,17 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, sigla_chave, 
                     f"Preço Atualizado Confirmado: {preco_atual_str}"
                 )
 
-                prompt_ia = f"Gere o relatório analítico ou de fechamento para os dados reais a seguir. O relatório deve ser profissional e seguir o modelo solicitado:\n\n{dados_mercado}"
+                prompt_ia = f"Gere o relatório analítico ou de fechamento para os dados reais: {dados_mercado}. Utilize obrigatoriamente o Preço Atualizado Confirmado informado."
 
                 await context.bot.send_chat_action(chat_id=chat_id, action="typing")
                 resposta_ia = chamar_groq(prompt_ia, nome_usuario, modo_sinal=True, mercado_aberto=mercado_aberto)
 
                 await context.bot.send_message(chat_id=chat_id, text=resposta_ia, parse_mode="Markdown")
+                
+                # Encerra o monitoramento desta seleção após disparar o sinal
                 break
                 
         except Exception as e:
-            print(f"❌ Erro no loop de monitoramento: {e}", flush=True)
             await asyncio.sleep(5)
 
 # =========================
@@ -242,14 +233,11 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, sigla_chave, 
 # =========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("nome", None)
-    
-    # 🖼️ IMAGEM PROFISSIONAL DE TECNOLOGIA E TRADING (ESTILO TERMINAL DIGITAL):
-    url_imagem = "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?q=80&w=1000&auto=format&fit=crop"
-    
+    url_imagem = "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?q=80&w=1000&auto=format&fit=crop"
     legenda_boas_vindas = (
-        "🚀 **BEM-VINDO AO SNAP SINAIS PRO** 📊✨\n"
-        "**TERMINAL ANALÍTICO DE ALTA PERFORMANCE.**\n\n"
-        "PARA INICIAR SUA SESSÃO, POR FAVOR, INFORME:\n"
+        "🚀 **BEM-VINDO AO SNAP SINAIS BOT** 📈\n\n"
+        "TERMINAL INTELIGENTE DE ANÁLISE DE MERCADO.\n\n"
+        "PARA COMEÇAR, POR FAVOR, INFORME:\n"
         "👉 **QUAL É O SEU NOME OU APELIDO?**"
     )
 
@@ -326,6 +314,7 @@ async def botao_clicado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sigla_chave = data.replace("btn_", "")
         if sigla_chave in MAPA_ATIVOS:
             info = MAPA_ATIVOS[sigla_chave]
+            # Inicia o monitoramento em background usando create_task para não travar o bot
             context.application.create_task(
                 executar_analise_mercado(chat_id, context, nome_usuario, sigla_chave, info["par_api"], info["nome"])
             )
@@ -339,7 +328,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         nome_usuario = context.user_data["nome"]
 
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-        boas_vindas_ia = chamar_groq(f"Dê boas-vindas executivas curtas e em maiúsculas.", nome_usuario, modo_sinal=False)
+        boas_vindas_ia = chamar_groq(f"Dê boas-vindas curtas e em maiúsculas.", nome_usuario, modo_sinal=False)
         await context.bot.send_message(chat_id=chat_id, text=boas_vindas_ia.upper(), parse_mode="Markdown")
         await enviar_menu_principal(update, context, nome_usuario)
         return
@@ -368,7 +357,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
             )
             return
         else:
-            await context.bot.send_message(chat_id=chat_id, text="🔍 *ATIVO NÃO IDENTIFICADO NO SISTEMA PRO.*", parse_mode="Markdown")
+            await context.bot.send_message(chat_id=chat_id, text="🔍 *ATIVO NÃO IDENTIFICADO.*", parse_mode="Markdown")
             return
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
@@ -379,7 +368,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 # INICIALIZAÇÃO DO BOT
 # =========================
 def main():
-    print("🚀 Iniciando o Snap Sinais Pro...", flush=True)
+    print("🚀 Iniciando o Snap Sinais Bot...", flush=True)
     request = HTTPXRequest(connection_pool_size=20, connect_timeout=60, read_timeout=60)
     app = Application.builder().token(TOKEN).request(request).build()
 
