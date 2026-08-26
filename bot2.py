@@ -243,8 +243,9 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, sigla_chave, 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("nome", None)
     
-    # Imagem atualizada com visual Pro Analytics
-    url_imagem = "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?q=80&w=1000&auto=format&fit=crop"
+    # 🖼️ IMAGEM PROFISSIONAL DE TECNOLOGIA E TRADING (ESTILO TERMINAL DIGITAL):
+    url_imagem = "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?q=80&w=1000&auto=format&fit=crop"
+    
     legenda_boas_vindas = (
         "🚀 **BEM-VINDO AO SNAP SINAIS PRO** 📊✨\n"
         "**TERMINAL ANALÍTICO DE ALTA PERFORMANCE.**\n\n"
@@ -392,8 +393,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
-    
-
-
-
