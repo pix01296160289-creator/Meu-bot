@@ -189,7 +189,7 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, sigla_chave, 
 # =========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("nome", None)
-    url_imagem = "https://images.unsplash.com/photo-1518770660439-4636190af475?q=80&w=1000&auto=format&fit=crop"
+    url_imagem = "https://images.unsplash.com/photo-1621416894569-0f39ed31d247?q=80&w=1000&auto=format&fit=crop"
     legenda_boas_vindas = (
         "🚀 **BEM-VINDO AO BITCOIN & CRYPTO BOT** 🪙\n\n"
         "SEU TERMINAL INTELIGENTE DE ANÁLISE DE ATIVOS DIGITAIS.\n\n"
@@ -294,4 +294,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
 
