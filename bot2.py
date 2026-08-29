@@ -40,7 +40,7 @@ print(f"🔑 Groq Key encontrada? {'Sim' if GROQ_API_KEY else 'Não'}", flush=Tr
 print(f"🔑 Chave Pix configurada? {'Sim' if CHAVE_PIX else 'Não'}", flush=True)
 
 if not TOKEN or not GROQ_API_KEY or not CHAVE_PIX:
-    print("❌ ERRO: Verifique se o TOKEN, GROQ_API_KEY e CHAVE_PIX estão preenchidos no .env!", flush=True)
+    print("❌ ERRO: Verifique se o TOKEN, GROQ_API_KEY e CHAVE_PIX estão preenchidos nas variáveis de ambiente!", flush=True)
     sys.exit(1)
 
 ARQUIVO_HISTORICO = "comprovantes_usados.json"
@@ -134,7 +134,7 @@ def criar_imagem_qrcode(payload):
     return bio
 
 # =========================
-# VALIDAÇÃO DE COMPROVANTE VIA IA (GROQ)
+# VALIDAÇÃO DE COMPROVANTE VIA IA (GROQ COM VISION)
 # =========================
 def analisar_comprovante_pix(image_bytes, valor_esperado, nome_esperado):
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -145,10 +145,10 @@ def analisar_comprovante_pix(image_bytes, valor_esperado, nome_esperado):
     base64_image = base64.b64encode(image_bytes).decode('utf-8')
 
     system_prompt = (
-        "Analise o comprovante de Pix enviado. "
-        f"O valor exato esperado é R$ {valor_esperado:.2f}, o recebedor (destino) deve ser {NOME_RECEBEDOR}, "
-        f"e o pagador (remetente) deve ser parecido com '{nome_esperado}'. "
-        "Ignore diferenças entre letras maiúsculas e minúsculas ou acentos. "
+        "Analise cuidadosamente o comprovante de Pix enviado na imagem. "
+        f"O valor exato esperado é R$ {valor_esperado:.2f}, o recebedor deve ser {NOME_RECEBEDOR}, "
+        f"e o pagador deve ser compatível com '{nome_esperado}'. "
+        "Ignore diferenças entre letras maiúsculas/minúsculas ou acentos. "
         "Responda estritamente em uma única linha usando o formato exato:\n\n"
         "Se aprovado (valor correto, recebedor correto e nome do pagador compatível):\n"
         "APROVADO | [valor pago] | [nome do pagador na imagem] | [data e hora] | [id da transacao]\n\n"
@@ -158,7 +158,7 @@ def analisar_comprovante_pix(image_bytes, valor_esperado, nome_esperado):
     )
 
     payload = {
-        "model": "qwen/qwen3.6-27b",
+        "model": "llama-3.2-11b-vision-preview",
         "messages": [
             {"role": "system", "content": system_prompt},
             {
@@ -208,7 +208,7 @@ def obter_preco_atual(par_api):
                     preco_recente = preco_recente.item()
                 return float(preco_recente)
         return 0.0
-    except Exception as e:
+    except Exception:
         return 0.0
 
 def chamar_groq_cripto(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False):
@@ -240,7 +240,7 @@ def chamar_groq_cripto(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False)
         instrucao_sistema = f"Você é o assistente executivo especializado em criptomoedas do 'Crypto Bot'. O usuário se chama {nome_usuario}."
 
     payload = {
-        "model": "openai/gpt-oss-120b",
+        "model": "llama-3.3-70b-versatile",
         "messages": [
             {"role": "system", "content": instrucao_sistema},
             {"role": "user", "content": pergunta_usuario}
@@ -403,7 +403,6 @@ async def receber_comprovante(update: Update, context: ContextTypes.DEFAULT_TYPE
         else:
             salvar_comprovante_usado(id_transacao)
             
-            # Salva o nome para o painel de cripto
             context.user_data["nome"] = nome_pagador
 
             resposta = (
@@ -416,7 +415,6 @@ async def receber_comprovante(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             await update.message.reply_text(resposta, parse_mode="Markdown")
             
-            # Abre o painel de criptoativos automaticamente após aprovação
             await enviar_menu_principal(update, context, nome_pagador)
     else:
         motivo = partes[1] if len(partes) > 1 else "Dados divergentes (Nome incorreto, valor errado ou comprovante inválido)."
@@ -436,7 +434,6 @@ async def botao_clicado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
 
     if data == "iniciar_pagamento":
-        # Tratado pelo ConversationHandler
         return
     elif data == "menu_principal":
         await enviar_menu_principal(query, context, nome_usuario)
@@ -483,6 +480,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+          
 
 
 
