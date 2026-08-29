@@ -1,4 +1,4 @@
-     import os
+import os
 import sys
 import base64
 import qrcode
@@ -45,12 +45,8 @@ if not TOKEN or not GROQ_API_KEY or not CHAVE_PIX:
 
 ARQUIVO_HISTORICO = "comprovantes_usados.json"
 
-# Estados da Conversa para o Pix
 PERGUNTANDO_NOME = 1
 
-# =========================
-# MAPA DE ATIVOS CRIPTO (Painel Pós-Pagamento)
-# =========================
 MAPA_ATIVOS = {
     "btc_brl": {"par_api": "BTC-BRL", "nome": "Bitcoin / Real (BTC/BRL)"},
     "btc_usd": {"par_api": "BTC-USD", "nome": "Bitcoin / Dólar (BTC/USD)"},
@@ -59,9 +55,6 @@ MAPA_ATIVOS = {
     "xau_usd": {"par_api": "GC=F", "nome": "Ouro / Dólar (XAU/USD)"}
 }
 
-# =========================
-# FUNÇÕES DE HISTÓRICO PIX
-# =========================
 def carregar_comprovantes_usados():
     if os.path.exists(ARQUIVO_HISTORICO):
         try:
@@ -78,9 +71,6 @@ def salvar_comprovante_usado(id_transacao):
         with open(ARQUIVO_HISTORICO, "w") as f:
             json.dump(usados, f)
 
-# =========================
-# GERADOR DE PIX (PADRÃO BACEN LIMPO)
-# =========================
 def gerar_payload_pix(pix_key, nome, cidade, valor, identificador="***"):
     def format_field(id_field, value):
         val_str = str(value)
@@ -133,9 +123,6 @@ def criar_imagem_qrcode(payload):
     bio.seek(0)
     return bio
 
-# =========================
-# VALIDAÇÃO DE COMPROVANTE VIA IA (GROQ COM VISION ATUALIZADO)
-# =========================
 def analisar_comprovante_pix(image_bytes, valor_esperado, nome_esperado):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
@@ -182,9 +169,6 @@ def analisar_comprovante_pix(image_bytes, valor_esperado, nome_esperado):
     except Exception as e:
         return f"REPROVADO | Erro de conexão: {str(e)}"
 
-# =========================
-# UTILITÁRIOS DE CRIPTO E MERCADO
-# =========================
 def verificar_status_mercado():
     fuso_brasil = ZoneInfo("America/Sao_Paulo")
     agora = datetime.now(fuso_brasil)
@@ -290,9 +274,6 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, par_api, nome
         except Exception:
             await asyncio.sleep(5)
 
-# =========================
-# FLUXO DO TELEGRAM (PIX + PAINEL)
-# =========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     teclado = [[InlineKeyboardButton("💳 COMPRAR / GERAR PIX DE ACESSO", callback_data="iniciar_pagamento")]]
     await update.message.reply_text(
@@ -318,7 +299,6 @@ async def receber_nome(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data["nome_pagador"] = nome_usuario
 
-    # Centavos aleatórios para validação única
     valor_base = 2.00
     centavos_aleatorios = random.randint(1, 99) / 100
     valor_teste = round(valor_base + centavos_aleatorios, 2)
@@ -448,9 +428,6 @@ async def botao_clicado(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def erro_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     print(f"❌ ERRO CAPTURADO NO BOT: {context.error}", flush=True)
 
-# =========================
-# INICIALIZAÇÃO DO BOT
-# =========================
 def main():
     print("🔄 Iniciando bot unificado (Pix Antifraude + Painel Cripto)...", flush=True)
 
@@ -480,8 +457,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-  
-
-
-
-
