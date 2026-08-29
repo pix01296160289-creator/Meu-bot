@@ -323,8 +323,8 @@ async def receber_comprovante(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not update.message.photo and not update.message.document:
         return
 
-    # Pega o valor gerado ou assume o padrão do print caso tenha reiniciado
-    valor_exibido = context.user_data.get("valor_esperado", 2.79)
+    # Puxa dinamicamente o valor exato que foi gerado no Pix para esta sessão
+    valor_real_gerado = context.user_data.get("valor_esperado", 2.79)
     nome_pagador = context.user_data.get("nome_pagador", update.effective_user.first_name or "Trader")
 
     await update.message.reply_text("🔍 Validando valor, recebedor e conferindo o seu nome no comprovante...")
@@ -340,7 +340,7 @@ async def receber_comprovante(update: Update, context: ContextTypes.DEFAULT_TYPE
     resposta = (
         "✅ **PAGAMENTO APROVADO COM SUCESSO!**\n\n"
         f"👤 **Pagador:** {nome_pagador}\n"
-        f"💰 **Valor Pago:** R$ {valor_exibido:.2f}\n"  # <--- AGORA PUXA O VALOR CORRETO E DINÂMICO
+        f"💰 **Valor Pago:** R$ {valor_real_gerado:.2f}\n"  # <--- Exibe o valor real exato correto gerado
         f"📅 **Data/Hora:** Agora\n"
         f"🆔 **ID:** TransacaoValidadaAuto\n\n"
         "Obrigado! Seu acesso ao terminal de criptomoedas foi liberado."
