@@ -190,7 +190,7 @@ def chamar_groq_cripto(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False)
         instrucao_sistema = f"Você é o assistente executivo especializado em criptomoedas do 'Crypto Bot'. O usuário se chama {nome_usuario}."
 
     payload = {
-        "model": "llama-3.3-70b-versatile",
+        "model": "llama-3.1-70b-versatile",
         "messages": [
             {"role": "system", "content": instrucao_sistema},
             {"role": "user", "content": pergunta_usuario}
@@ -323,7 +323,6 @@ async def receber_comprovante(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not update.message.photo and not update.message.document:
         return
 
-    # Puxa dinamicamente o valor exato que foi gerado no Pix para esta sessão
     valor_real_gerado = context.user_data.get("valor_esperado", 2.79)
     nome_pagador = context.user_data.get("nome_pagador", update.effective_user.first_name or "Trader")
 
@@ -340,7 +339,7 @@ async def receber_comprovante(update: Update, context: ContextTypes.DEFAULT_TYPE
     resposta = (
         "✅ **PAGAMENTO APROVADO COM SUCESSO!**\n\n"
         f"👤 **Pagador:** {nome_pagador}\n"
-        f"💰 **Valor Pago:** R$ {valor_real_gerado:.2f}\n"  # <--- Exibe o valor real exato correto gerado
+        f"💰 **Valor Pago:** R$ {valor_real_gerado:.2f}\n"
         f"📅 **Data/Hora:** Agora\n"
         f"🆔 **ID:** TransacaoValidadaAuto\n\n"
         "Obrigado! Seu acesso ao terminal de criptomoedas foi liberado."
