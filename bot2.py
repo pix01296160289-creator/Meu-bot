@@ -1,4 +1,4 @@
-import os
+     import os
 import sys
 import base64
 import qrcode
@@ -134,7 +134,7 @@ def criar_imagem_qrcode(payload):
     return bio
 
 # =========================
-# VALIDAÇÃO DE COMPROVANTE VIA IA (GROQ COM VISION)
+# VALIDAÇÃO DE COMPROVANTE VIA IA (GROQ COM VISION ATUALIZADO)
 # =========================
 def analisar_comprovante_pix(image_bytes, valor_esperado, nome_esperado):
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -158,7 +158,7 @@ def analisar_comprovante_pix(image_bytes, valor_esperado, nome_esperado):
     )
 
     payload = {
-        "model": "llama-3.2-11b-vision-preview",
+        "model": "qwen/qwen3.6-27b",
         "messages": [
             {"role": "system", "content": system_prompt},
             {
@@ -480,7 +480,7 @@ def main():
 
 if __name__ == "__main__":
     main()
-          
+  
 
 
 
