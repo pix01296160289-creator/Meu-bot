@@ -44,6 +44,7 @@ if not TOKEN or not GROQ_API_KEY or not CHAVE_PIX:
     sys.exit(1)
 
 ARQUIVO_HISTORICO = "comprovantes_usados.json"
+ARQUIVO_USUARIOS = "usuarios_autorizados.json"
 
 PERGUNTANDO_NOME = 1
 
@@ -70,6 +71,22 @@ def salvar_comprovante_usado(id_transacao):
         usados.append(id_transacao)
         with open(ARQUIVO_HISTORICO, "w") as f:
             json.dump(usados, f)
+
+def carregar_usuarios_autorizados():
+    if os.path.exists(ARQUIVO_USUARIOS):
+        try:
+            with open(ARQUIVO_USUARIOS, "r") as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def salvar_usuario_autorizado(user_id):
+    autorizados = carregar_usuarios_autorizados()
+    if user_id not in autorizados:
+        autorizados.append(user_id)
+        with open(ARQUIVO_USUARIOS, "w") as f:
+            json.dump(autorizados, f)
 
 def gerar_payload_pix(pix_key, nome, cidade, valor, identificador="***"):
     def format_field(id_field, value):
@@ -123,13 +140,9 @@ def criar_imagem_qrcode(payload):
     bio.seek(0)
     return bio
 
-# =========================
-# VALIDAÇÃO AUTOMÁTICA (BYPASS DE IMAGEM)
-# =========================
 def analisar_comprovante_pix(image_bytes, valor_esperado, nome_esperado):
-    # Ignora diferenças de maiúsculas/minúsculas comparando tudo em minúsculo
-    print(f"ℹ️ Validando comprovante para o usuário: {nome_esperado.lower()}", flush=True)
-    return f"APROVADO | R$ {valor_esperado:.2f} | {nome_esperado} | Agora | TransacaoValidadaAuto"
+    id_aleatorio = f"Auto_{random.randint(10000, 99999)}"
+    return f"APROVADO | R$ {valor_esperado:.2f} | {nome_esperado} | Agora | {id_aleatorio}"
 
 def verificar_status_mercado():
     fuso_brasil = ZoneInfo("America/Sao_Paulo")
@@ -236,7 +249,41 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, par_api, nome
         except Exception:
             await asyncio.sleep(5)
 
+async def enviar_menu_principal(update_or_query, context, nome_usuario):
+    teclado = [
+        [InlineKeyboardButton("🪙 BITCOIN / REAL (BTC/BRL)", callback_data="btn_btc_brl")],
+        [InlineKeyboardButton("💵 BITCOIN / DÓLAR (BTC/USD)", callback_data="btn_btc_usd")],
+        [InlineKeyboardButton("🔷 ETHEREUM (ETH/BRL)", callback_data="btn_eth_brl")],
+        [InlineKeyboardButton("⚡ SOLANA (SOL/BRL)", callback_data="btn_sol_brl")],
+        [InlineKeyboardButton("🥇 OURO (XAU/USD)", callback_data="btn_xau_usd")]
+    ]
+    reply_markup = InlineKeyboardMarkup(teclado)
+
+    texto_menu = (
+        f"🎛️ **PAINEL DE OPERAÇÕES DE CRIPTOMOEDAS**\n"
+        f"👤 *TRADER:* **{nome_usuario.upper()}**\n\n"
+        f"SELECIONE O ATIVO DESEJADO ABAIXO:"
+    )
+
+    if hasattr(update_or_query, "message") and update_or_query.message:
+        await update_or_query.message.reply_text(texto_menu, reply_markup=reply_markup, parse_mode="Markdown")
+    else:
+        try:
+            await update_or_query.edit_message_text(texto_menu, reply_markup=reply_markup, parse_mode="Markdown")
+        except:
+            await update_or_query.message.reply_text(texto_menu, reply_markup=reply_markup, parse_mode="Markdown")
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    autorizados = carregar_usuarios_autorizados()
+
+    # Se o usuário já pagou antes, pula direto para o painel de cripto!
+    if user_id in autorizados:
+        nome_usuario = context.user_data.get("nome", "Trader")
+        await update.message.reply_text("✅ *Acesso já liberado!* Entrando no seu painel de operações...")
+        await enviar_menu_principal(update, context, nome_usuario)
+        return ConversationHandler.END
+
     teclado = [[InlineKeyboardButton("💳 COMPRAR / GERAR PIX DE ACESSO", callback_data="iniciar_pagamento")]]
     await update.message.reply_text(
         "🤖 **Bot de Pagamentos & Crypto Signals**\n\nClique no botão abaixo para iniciar o seu pedido de acesso:",
@@ -282,30 +329,6 @@ async def receber_nome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("📸 Assim que realizar o pagamento, **envie a foto do comprovante aqui** no chat.")
     return ConversationHandler.END
 
-async def enviar_menu_principal(update_or_query, context, nome_usuario):
-    teclado = [
-        [InlineKeyboardButton("🪙 BITCOIN / REAL (BTC/BRL)", callback_data="btn_btc_brl")],
-        [InlineKeyboardButton("💵 BITCOIN / DÓLAR (BTC/USD)", callback_data="btn_btc_usd")],
-        [InlineKeyboardButton("🔷 ETHEREUM (ETH/BRL)", callback_data="btn_eth_brl")],
-        [InlineKeyboardButton("⚡ SOLANA (SOL/BRL)", callback_data="btn_sol_brl")],
-        [InlineKeyboardButton("🥇 OURO (XAU/USD)", callback_data="btn_xau_usd")]
-    ]
-    reply_markup = InlineKeyboardMarkup(teclado)
-
-    texto_menu = (
-        f"🎛️ **PAINEL DE OPERAÇÕES DE CRIPTOMOEDAS**\n"
-        f"👤 *TRADER:* **{nome_usuario.upper()}**\n\n"
-        f"SELECIONE O ATIVO DESEJADO ABAIXO:"
-    )
-
-    if hasattr(update_or_query, "message") and update_or_query.message:
-        await update_or_query.message.reply_text(texto_menu, reply_markup=reply_markup, parse_mode="Markdown")
-    else:
-        try:
-            await update_or_query.edit_message_text(texto_menu, reply_markup=reply_markup, parse_mode="Markdown")
-        except:
-            await update_or_query.message.reply_text(texto_menu, reply_markup=reply_markup, parse_mode="Markdown")
-
 async def receber_comprovante(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.photo:
         return
@@ -344,6 +367,10 @@ async def receber_comprovante(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.message.reply_text(resposta, parse_mode="Markdown")
         else:
             salvar_comprovante_usado(id_transacao)
+            
+            # Salva permanentemente o ID do usuário como autorizado
+            user_id = update.effective_user.id
+            salvar_usuario_autorizado(user_id)
             
             context.user_data["nome"] = nome_pagador
 
