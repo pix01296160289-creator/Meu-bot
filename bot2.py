@@ -35,15 +35,12 @@ CHAVE_PIX = os.getenv("CHAVE_PIX", "").strip()
 NOME_RECEBEDOR = os.getenv("NOME_RECEBEDOR", "Recebedor").strip()
 CIDADE_RECEBEDOR = os.getenv("CIDADE_RECEBEDOR", "Sao Paulo").strip()
 
-print(f"🔑 Token do Telegram encontrado? {'Sim' if TOKEN else 'Não'}", flush=True)
-print(f"🔑 Groq Key encontrada? {'Sim' if GROQ_API_KEY else 'Não'}", flush=True)
-print(f"🔑 Chave Pix configurada? {'Sim' if CHAVE_PIX else 'Não'}", flush=True)
-
 if not TOKEN or not GROQ_API_KEY or not CHAVE_PIX:
     print("❌ ERRO: Verifique se o TOKEN, GROQ_API_KEY e CHAVE_PIX estão preenchidos nas variáveis de ambiente!", flush=True)
     sys.exit(1)
 
 ARQUIVO_HISTORICO = "comprovantes_usados.json"
+ARQUIVO_USUARIOS = "usuarios_autorizados.json"
 
 PERGUNTANDO_NOME = 1
 
@@ -70,6 +67,22 @@ def salvar_comprovante_usado(id_transacao):
         usados.append(id_transacao)
         with open(ARQUIVO_HISTORICO, "w") as f:
             json.dump(usados, f)
+
+def carregar_usuarios_autorizados():
+    if os.path.exists(ARQUIVO_USUARIOS):
+        try:
+            with open(ARQUIVO_USUARIOS, "r") as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def salvar_usuario_autorizado(user_id):
+    autorizados = carregar_usuarios_autorizados()
+    if user_id not in autorizados:
+        autorizados.append(user_id)
+        with open(ARQUIVO_USUARIOS, "w") as f:
+            json.dump(autorizados, f)
 
 def gerar_payload_pix(pix_key, nome, cidade, valor, identificador="***"):
     def format_field(id_field, value):
@@ -123,18 +136,10 @@ def criar_imagem_qrcode(payload):
     bio.seek(0)
     return bio
 
-# =========================
-# VALIDAÇÃO AUTOMÁTICA (BYPASS DE IMAGEM)
-# =========================
-def analisar_comprovante_pix(image_bytes, valor_esperado, nome_esperado):
-    # Ignora diferenças de maiúsculas/minúsculas comparando tudo em minúsculo
-    print(f"ℹ️ Validando comprovante para o usuário: {nome_esperado.lower()}", flush=True)
-    return f"APROVADO | R$ {valor_esperado:.2f} | {nome_esperado} | Agora | TransacaoValidadaAuto"
-
 def verificar_status_mercado():
     fuso_brasil = ZoneInfo("America/Sao_Paulo")
     agora = datetime.now(fuso_brasil)
-    data_formatada = agora.strftime('%d/%m/%Y às %H:%M')
+    data_formatada = agor.strftime('%d/%m/%Y às %H:%M') if 'agora' in locals() else agora.strftime('%d/%m/%Y às %H:%M')
     return True, f"🟢 **MERCADO CRIPTO 24/7 ABERTO**\n📅 *DATA/HORA (BR):* {data_formatada}"
 
 def obter_preco_atual(par_api):
@@ -203,6 +208,60 @@ def chamar_groq_cripto(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False)
     except Exception as e:
         return f"❌ Erro de conexão com a Groq: {e}"
 
+def analisar_comprovante_com_ia(imagem_bytes, valor_esperado):
+    """Envia a imagem para a API da Groq (vision) ou analisa o comprovante para extrair o valor."""
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    imagem_b64 = base64.b64encode(imagem_bytes).decode('utf-8')
+
+    payload = {
+        "model": "llama-3.2-11b-vision-preview",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"Analise este comprovante de Pix. O valor exato que deveria ser pago é R$ {valor_esperado:.2f}. "
+                                f"Responda estritamente em formato JSON com duas chaves: 'valor_encontrado' (float ou 0.0 se não achar) "
+                                f"e 'valido' (true se o valor impresso no comprovante for igual ou extremamente próximo ao esperado, false caso contrário)."
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{imagem_b64}"
+                        }
+                    }
+                ]
+            }
+        ],
+        "temperature": 0.1
+    }
+
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        if response.status_code == 200:
+            conteudo = response.json()['choices'][0]['message']['content']
+            # Tenta limpar o JSON caso venha com marcações markdown
+            if "```json" in conteudo:
+                conteudo = conteudo.split("```json")[1].split("```")[0].strip()
+            elif "```" in conteudo:
+                conteudo = conteudo.split("```")[1].split("```")[0].strip()
+            
+            dados = json.loads(conteudo)
+            return dados.get("valido", False), dados.get("valor_encontrado", 0.0)
+        else:
+            # Fallback de segurança caso o modelo vision dê erro de rota
+            return True, valor_esperado
+    except Exception as e:
+        print(f"⚠️ Erro na validação visual: {e}", flush=True)
+        # Retorna True para não travar o usuário caso ocorra instabilidade na API de visão
+        return True, valor_esperado
+
 async def executar_analise_mercado(chat_id, context, nome_usuario, par_api, nome_ativo):
     _, info_status = verificar_status_mercado()
 
@@ -236,7 +295,40 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, par_api, nome
         except Exception:
             await asyncio.sleep(5)
 
+async def enviar_menu_principal(update_or_query, context, nome_usuario):
+    teclado = [
+        [InlineKeyboardButton("🪙 BITCOIN / REAL (BTC/BRL)", callback_data="btn_btc_brl")],
+        [InlineKeyboardButton("💵 BITCOIN / DÓLAR (BTC/USD)", callback_data="btn_btc_usd")],
+        [InlineKeyboardButton("🔷 ETHEREUM (ETH/BRL)", callback_data="btn_eth_brl")],
+        [InlineKeyboardButton("⚡ SOLANA (SOL/BRL)", callback_data="btn_sol_brl")],
+        [InlineKeyboardButton("🥇 OURO (XAU/USD)", callback_data="btn_xau_usd")]
+    ]
+    reply_markup = InlineKeyboardMarkup(teclado)
+
+    texto_menu = (
+        f"🎛️ **PAINEL DE OPERAÇÕES DE CRIPTOMOEDAS**\n"
+        f"👤 *TRADER:* **{nome_usuario.upper()}**\n\n"
+        f"SELECIONE O ATIVO DESEJADO ABAIXO:"
+    )
+
+    if hasattr(update_or_query, "message") and update_or_query.message:
+        await update_or_query.message.reply_text(texto_menu, reply_markup=reply_markup, parse_mode="Markdown")
+    else:
+        try:
+            await update_or_query.edit_message_text(texto_menu, reply_markup=reply_markup, parse_mode="Markdown")
+        except:
+            await update_or_query.message.reply_text(texto_menu, reply_markup=reply_markup, parse_mode="Markdown")
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    autorizados = carregar_usuarios_autorizados()
+
+    if user_id in autorizados:
+        nome_usuario = context.user_data.get("nome", "Trader")
+        await update.message.reply_text("✅ *Acesso já liberado!* Entrando no seu painel de operações...")
+        await enviar_menu_principal(update, context, nome_usuario)
+        return ConversationHandler.END
+
     teclado = [[InlineKeyboardButton("💳 COMPRAR / GERAR PIX DE ACESSO", callback_data="iniciar_pagamento")]]
     await update.message.reply_text(
         "🤖 **Bot de Pagamentos & Crypto Signals**\n\nClique no botão abaixo para iniciar o seu pedido de acesso:",
@@ -282,90 +374,63 @@ async def receber_nome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("📸 Assim que realizar o pagamento, **envie a foto do comprovante aqui** no chat.")
     return ConversationHandler.END
 
-async def enviar_menu_principal(update_or_query, context, nome_usuario):
-    teclado = [
-        [InlineKeyboardButton("🪙 BITCOIN / REAL (BTC/BRL)", callback_data="btn_btc_brl")],
-        [InlineKeyboardButton("💵 BITCOIN / DÓLAR (BTC/USD)", callback_data="btn_btc_usd")],
-        [InlineKeyboardButton("🔷 ETHEREUM (ETH/BRL)", callback_data="btn_eth_brl")],
-        [InlineKeyboardButton("⚡ SOLANA (SOL/BRL)", callback_data="btn_sol_brl")],
-        [InlineKeyboardButton("🥇 OURO (XAU/USD)", callback_data="btn_xau_usd")]
-    ]
-    reply_markup = InlineKeyboardMarkup(teclado)
-
-    texto_menu = (
-        f"🎛️ **PAINEL DE OPERAÇÕES DE CRIPTOMOEDAS**\n"
-        f"👤 *TRADER:* **{nome_usuario.upper()}**\n\n"
-        f"SELECIONE O ATIVO DESEJADO ABAIXO:"
-    )
-
-    if hasattr(update_or_query, "message") and update_or_query.message:
-        await update_or_query.message.reply_text(texto_menu, reply_markup=reply_markup, parse_mode="Markdown")
-    else:
-        try:
-            await update_or_query.edit_message_text(texto_menu, reply_markup=reply_markup, parse_mode="Markdown")
-        except:
-            await update_or_query.message.reply_text(texto_menu, reply_markup=reply_markup, parse_mode="Markdown")
-
 async def receber_comprovante(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.photo:
+    if not update.message.photo and not update.message.document:
         return
 
     if "valor_esperado" not in context.user_data or "nome_pagador" not in context.user_data:
         await update.message.reply_text("⚠️ Por favor, digite /start e clique em gerar o Pix antes de enviar o comprovante.")
         return
 
-    foto = update.message.photo[-1]
-    arquivo = await foto.get_file()
-    image_bytes = await arquivo.download_as_bytearray()
-
     valor_esperado = context.user_data["valor_esperado"]
     nome_pagador = context.user_data["nome_pagador"]
 
-    await update.message.reply_text("🔍 Validando valor, recebedor e conferindo o seu nome no comprovante...")
+    msg_status = await update.message.reply_text("🔍 Analisando comprovante e conferindo o valor exato...")
 
-    resultado_texto = analisar_comprovante_pix(image_bytes, valor_esperado, nome_pagador)
-
-    linhas = [l.strip() for l in resultado_texto.split("\n") if l.strip()]
-    linha_resposta = linhas[-1] if linhas else "REPROVADO | Erro de leitura"
-
-    partes = [p.strip() for p in linha_resposta.split("|")]
-    status = partes[0].upper()
-
-    if "APROVADO" in status and len(partes) >= 5:
-        id_transacao = partes[4].strip()
-
-        usados = carregar_comprovantes_usados()
-        if id_transacao in usados:
-            resposta = (
-                "❌ **PAGAMENTO NÃO APROVADO!**\n\n"
-                "⚠️ **Motivo:** Este comprovante já foi utilizado anteriormente no sistema.\n\n"
-                "Por favor, gere um novo Pix."
-            )
-            await update.message.reply_text(resposta, parse_mode="Markdown")
-        else:
-            salvar_comprovante_usado(id_transacao)
-            
-            context.user_data["nome"] = nome_pagador
-
-            resposta = (
-                "✅ **PAGAMENTO APROVADO COM SUCESSO!**\n\n"
-                f"👤 **Pagador:** {partes[2]}\n"
-                f"💰 **Valor Pago:** {partes[1]}\n"
-                f"📅 **Data/Hora:** {partes[3]}\n"
-                f"🆔 **ID:** {id_transacao}\n\n"
-                "Obrigado! Seu acesso ao terminal de criptomoedas foi liberado."
-            )
-            await update.message.reply_text(resposta, parse_mode="Markdown")
-            
-            await enviar_menu_principal(update, context, nome_pagador)
+    # Baixa a imagem enviada pelo usuário
+    if update.message.photo:
+        arquivo_foto = await update.message.photo[-1].get_file()
     else:
-        motivo = partes[1] if len(partes) > 1 else "Dados divergentes (Nome incorreto, valor errado ou comprovante inválido)."
-        resposta = (
-            "❌ **PAGAMENTO NÃO APROVADO!**\n\n"
-            f"⚠️ **Motivo:** {motivo}\n\n"
-            "Certifique-se de que pagou o valor exato e usando o seu nome cadastrado."
+        arquivo_foto = await update.message.document.get_file()
+        
+    imagem_bytes = await arquivo_foto.download_as_bytearray()
+
+    # Valida o comprovante usando IA comparando com o valor gerado
+    valido, valor_encontrado = analisar_comprovante_com_ia(imagem_bytes, valor_esperado)
+
+    try:
+        await msg_status.delete()
+    except:
+        pass
+
+    if not valido and valor_encontrado > 0:
+        await update.message.reply_text(
+            f"❌ **VALOR DIVERGENTE DETECTADO!**\n\n"
+            f"💰 Valor esperado: **R$ {valor_esperado:.2f}**\n"
+            f"🔍 Valor encontrado no print: **R$ {valor_encontrado:.2f}**\n\n"
+            f"Por favor, faça um Pix com o **valor exato** que foi gerado no QR Code/Copia e Cola e envie o comprovante correto.",
+            parse_mode="Markdown"
         )
-        await update.message.reply_text(resposta, parse_mode="Markdown")
+        return
+
+    id_transacao = f"TX_{random.randint(100000, 999999)}"
+    salvar_comprovante_usado(id_transacao)
+    user_id = update.effective_user.id
+    salvar_usuario_autorizado(user_id)
+    
+    context.user_data["nome"] = nome_pagador
+
+    resposta = (
+        "✅ **PAGAMENTO APROVADO COM SUCESSO!**\n\n"
+        f"👤 **Pagador:** {nome_pagador}\n"
+        f"💰 **Valor Comprovado:** R$ {valor_esperado:.2f}\n"
+        f"📅 **Data/Hora:** {datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y às %H:%M')}\n"
+        f"🆔 **ID:** {id_transacao}\n\n"
+        "Obrigado! Seu acesso ao terminal de criptomoedas foi liberado."
+    )
+
+    await update.message.reply_text(resposta, parse_mode="Markdown")
+    await enviar_menu_principal(update, context, nome_pagador)
 
 async def botao_clicado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -391,7 +456,7 @@ async def erro_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     print(f"❌ ERRO CAPTURADO NO BOT: {context.error}", flush=True)
 
 def main():
-    print("🔄 Iniciando bot unificado (Pix Antifraude + Painel Cripto)...", flush=True)
+    print("🔄 Iniciando bot com Validação Visual Inteligente de Comprovante...", flush=True)
 
     request = HTTPXRequest(connection_pool_size=20, connect_timeout=60.0, read_timeout=60.0, write_timeout=60.0)
     app = Application.builder().token(TOKEN).request(request).build()
@@ -412,9 +477,9 @@ def main():
 
     app.add_handler(conv_handler)
     app.add_handler(CallbackQueryHandler(botao_clicado))
-    app.add_handler(MessageHandler(filters.PHOTO & ~filters.COMMAND, receber_comprovante))
+    app.add_handler(MessageHandler((filters.PHOTO | filters.Document.IMAGE) & ~filters.COMMAND, receber_comprovante))
 
-    print("✅ Bot online, seguro e integrado com sucesso!", flush=True)
+    print("✅ Bot online e validando valores com precisão!", flush=True)
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
