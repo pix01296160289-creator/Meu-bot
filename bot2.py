@@ -1,4 +1,4 @@
-import os
+import o
 import sys
 import base64
 import qrcode
