@@ -35,10 +35,6 @@ CHAVE_PIX = os.getenv("CHAVE_PIX", "").strip()
 NOME_RECEBEDOR = os.getenv("NOME_RECEBEDOR", "Recebedor").strip()
 CIDADE_RECEBEDOR = os.getenv("CIDADE_RECEBEDOR", "Sao Paulo").strip()
 
-print(f"🔑 Token do Telegram encontrado? {'Sim' if TOKEN else 'Não'}", flush=True)
-print(f"🔑 Groq Key encontrada? {'Sim' if GROQ_API_KEY else 'Não'}", flush=True)
-print(f"🔑 Chave Pix configurada? {'Sim' if CHAVE_PIX else 'Não'}", flush=True)
-
 if not TOKEN or not GROQ_API_KEY or not CHAVE_PIX:
     print("❌ ERRO: Verifique se o TOKEN, GROQ_API_KEY e CHAVE_PIX estão preenchidos nas variáveis de ambiente!", flush=True)
     sys.exit(1)
@@ -325,7 +321,8 @@ async def receber_nome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def receber_comprovante(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.photo:
+    # Aceita tanto foto padrão quanto arquivo/documento de imagem compartilhado pelo banco
+    if not update.message.photo and not update.message.document:
         return
 
     if "valor_esperado" not in context.user_data or "nome_pagador" not in context.user_data:
@@ -407,7 +404,8 @@ def main():
 
     app.add_handler(conv_handler)
     app.add_handler(CallbackQueryHandler(botao_clicado))
-    app.add_handler(MessageHandler(filters.PHOTO & ~filters.COMMAND, receber_comprovante))
+    # Aceita fotos comuns E documentos/arquivos de imagem enviados pelo app do banco
+    app.add_handler(MessageHandler((filters.PHOTO | filters.Document.IMAGE) & ~filters.COMMAND, receber_comprovante))
 
     print("✅ Bot online, seguro e integrado com sucesso!", flush=True)
     app.run_polling(drop_pending_updates=True)
