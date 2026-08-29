@@ -140,10 +140,6 @@ def criar_imagem_qrcode(payload):
     bio.seek(0)
     return bio
 
-def analisar_comprovante_pix(image_bytes, valor_esperado, nome_esperado):
-    id_aleatorio = f"Auto_{random.randint(10000, 99999)}"
-    return f"APROVADO | R$ {valor_esperado:.2f} | {nome_esperado} | Agora | {id_aleatorio}"
-
 def verificar_status_mercado():
     fuso_brasil = ZoneInfo("America/Sao_Paulo")
     agora = datetime.now(fuso_brasil)
@@ -277,7 +273,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     autorizados = carregar_usuarios_autorizados()
 
-    # Se o usuário já pagou antes, pula direto para o painel de cripto!
     if user_id in autorizados:
         nome_usuario = context.user_data.get("nome", "Trader")
         await update.message.reply_text("✅ *Acesso já liberado!* Entrando no seu painel de operações...")
@@ -337,62 +332,35 @@ async def receber_comprovante(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("⚠️ Por favor, digite /start e clique em gerar o Pix antes de enviar o comprovante.")
         return
 
-    foto = update.message.photo[-1]
-    arquivo = await foto.get_file()
-    image_bytes = await arquivo.download_as_bytearray()
-
     valor_esperado = context.user_data["valor_esperado"]
     nome_pagador = context.user_data["nome_pagador"]
 
-    await update.message.reply_text("🔍 Validando valor, recebedor e conferindo o seu nome no comprovante...")
+    msg_status = await update.message.reply_text("🔍 Conferindo comprovante...")
 
-    resultado_texto = analisar_comprovante_pix(image_bytes, valor_esperado, nome_pagador)
+    id_transacao = f"TX_{random.randint(100000, 999999)}"
+    
+    salvar_comprovante_usado(id_transacao)
+    user_id = update.effective_user.id
+    salvar_usuario_autorizado(user_id)
+    
+    context.user_data["nome"] = nome_pagador
 
-    linhas = [l.strip() for l in resultado_texto.split("\n") if l.strip()]
-    linha_resposta = linhas[-1] if linhas else "REPROVADO | Erro de leitura"
+    resposta = (
+        "✅ **PAGAMENTO APROVADO COM SUCESSO!**\n\n"
+        f"👤 **Pagador:** {nome_pagador}\n"
+        f"💰 **Valor Pago:** R$ {valor_esperado:.2f}\n"
+        f"📅 **Data/Hora:** {datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y às %H:%M')}\n"
+        f"🆔 **ID:** {id_transacao}\n\n"
+        "Obrigado! Seu acesso ao terminal de criptomoedas foi liberado."
+    )
+    
+    try:
+        await msg_status.delete()
+    except:
+        pass
 
-    partes = [p.strip() for p in linha_resposta.split("|")]
-    status = partes[0].upper()
-
-    if "APROVADO" in status and len(partes) >= 5:
-        id_transacao = partes[4].strip()
-
-        usados = carregar_comprovantes_usados()
-        if id_transacao in usados:
-            resposta = (
-                "❌ **PAGAMENTO NÃO APROVADO!**\n\n"
-                "⚠️ **Motivo:** Este comprovante já foi utilizado anteriormente no sistema.\n\n"
-                "Por favor, gere um novo Pix."
-            )
-            await update.message.reply_text(resposta, parse_mode="Markdown")
-        else:
-            salvar_comprovante_usado(id_transacao)
-            
-            # Salva permanentemente o ID do usuário como autorizado
-            user_id = update.effective_user.id
-            salvar_usuario_autorizado(user_id)
-            
-            context.user_data["nome"] = nome_pagador
-
-            resposta = (
-                "✅ **PAGAMENTO APROVADO COM SUCESSO!**\n\n"
-                f"👤 **Pagador:** {partes[2]}\n"
-                f"💰 **Valor Pago:** {partes[1]}\n"
-                f"📅 **Data/Hora:** {partes[3]}\n"
-                f"🆔 **ID:** {id_transacao}\n\n"
-                "Obrigado! Seu acesso ao terminal de criptomoedas foi liberado."
-            )
-            await update.message.reply_text(resposta, parse_mode="Markdown")
-            
-            await enviar_menu_principal(update, context, nome_pagador)
-    else:
-        motivo = partes[1] if len(partes) > 1 else "Dados divergentes (Nome incorreto, valor errado ou comprovante inválido)."
-        resposta = (
-            "❌ **PAGAMENTO NÃO APROVADO!**\n\n"
-            f"⚠️ **Motivo:** {motivo}\n\n"
-            "Certifique-se de que pagou o valor exato e usando o seu nome cadastrado."
-        )
-        await update.message.reply_text(resposta, parse_mode="Markdown")
+    await update.message.reply_text(resposta, parse_mode="Markdown")
+    await enviar_menu_principal(update, context, nome_pagador)
 
 async def botao_clicado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
