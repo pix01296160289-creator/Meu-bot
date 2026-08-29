@@ -1,5 +1,11 @@
 import os
 import sys
+import base64
+import qrcode
+import io
+import json
+import random
+import unicodedata
 import asyncio
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -7,31 +13,37 @@ from dotenv import load_dotenv
 import requests
 import yfinance as yf
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    ConversationHandler,
+    filters,
+    ContextTypes
+)
 from telegram.request import HTTPXRequest
 
 # =========================
-# CONFIGURAÇÃO E CHAVES (.env)
+# CARREGAR CONFIGURAÇÕES
 # =========================
 print("🔄 Carregando variáveis do .env...", flush=True)
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
-GROQ_KEY_COTACAO = os.getenv("GROQ_API_COTACAO")
-GROQ_KEY_PIX = os.getenv("GROQ_API_PIX")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+CHAVE_PIX = os.getenv("CHAVE_PIX", "").strip()
+NOME_RECEBEDOR = os.getenv("NOME_RECEBEDOR", "Recebedor").strip()
+CIDADE_RECEBEDOR = os.getenv("CIDADE_RECEBEDOR", "Sao Paulo").strip()
 
-if not TOKEN or not GROQ_KEY_COTACAO or not GROQ_KEY_PIX:
-    print("❌ ERRO: Verifique se o TOKEN, GROQ_API_COTACAO e GROQ_API_PIX estão no .env!", flush=True)
+if not TOKEN or not GROQ_API_KEY or not CHAVE_PIX:
+    print("❌ ERRO: Verifique se o TOKEN, GROQ_API_KEY e CHAVE_PIX estão preenchidos nas variáveis de ambiente!", flush=True)
     sys.exit(1)
 
-# =========================
-# TRATADOR DE ERROS GLOBAL
-# =========================
-async def erro_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    print(f"❌ ERRO CAPTURADO NO BOT: {context.error}", flush=True)
+ARQUIVO_HISTORICO = "comprovantes_usados.json"
+ARQUIVO_USUARIOS = "usuarios_autorizados.json"
 
-# =========================
-# MAPA DE ATIVOS CRIPTO
-# =========================
+PERGUNTANDO_NOME = 1
+
 MAPA_ATIVOS = {
     "btc_brl": {"par_api": "BTC-BRL", "nome": "Bitcoin / Real (BTC/BRL)"},
     "btc_usd": {"par_api": "BTC-USD", "nome": "Bitcoin / Dólar (BTC/USD)"},
@@ -40,18 +52,96 @@ MAPA_ATIVOS = {
     "xau_usd": {"par_api": "GC=F", "nome": "Ouro / Dólar (XAU/USD)"}
 }
 
-# =========================
-# VERIFICAÇÃO DE MERCADO
-# =========================
-def verificar_status_mercado(par_api):
+def carregar_comprovantes_usados():
+    if os.path.exists(ARQUIVO_HISTORICO):
+        try:
+            with open(ARQUIVO_HISTORICO, "r") as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def salvar_comprovante_usado(id_transacao):
+    usados = carregar_comprovantes_usados()
+    if id_transacao not in usados:
+        usados.append(id_transacao)
+        with open(ARQUIVO_HISTORICO, "w") as f:
+            json.dump(usados, f)
+
+def carregar_usuarios_autorizados():
+    if os.path.exists(ARQUIVO_USUARIOS):
+        try:
+            with open(ARQUIVO_USUARIOS, "r") as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def salvar_usuario_autorizado(user_id):
+    autorizados = carregar_usuarios_autorizados()
+    if user_id not in autorizados:
+        autorizados.append(user_id)
+        with open(ARQUIVO_USUARIOS, "w") as f:
+            json.dump(autorizados, f)
+
+def gerar_payload_pix(pix_key, nome, cidade, valor, identificador="***"):
+    def format_field(id_field, value):
+        val_str = str(value)
+        return f"{id_field}{len(val_str):02d}{val_str}"
+
+    def limpar_texto(texto):
+        return unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('ASCII').upper()
+
+    nome = limpar_texto(nome)[:25]
+    cidade = limpar_texto(cidade)[:15]
+    valor_str = f"{valor:.2f}"
+
+    payload = (
+        format_field("00", "01") +
+        format_field("26",
+            format_field("00", "br.gov.bcb.pix") +
+            format_field("01", pix_key)
+        ) +
+        format_field("52", "0000") +
+        format_field("53", "986") +
+        format_field("54", valor_str) +
+        format_field("58", "BR") +
+        format_field("59", nome) +
+        format_field("60", cidade) +
+        format_field("62", format_field("05", identificador)) +
+        "6304"
+    )
+
+    crc = 0xFFFF
+    for char in payload:
+        crc ^= ord(char) << 8
+        for _ in range(8):
+            if crc & 0x8000:
+                crc = (crc << 1) ^ 0x1021
+            else:
+                crc <<= 1
+            crc &= 0xFFFF
+
+    return payload + f"{crc:04X}"
+
+def criar_imagem_qrcode(payload):
+    qr = qrcode.QRCode(version=1, box_size=10, border=4)
+    qr.add_data(payload)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+
+    bio = io.BytesIO()
+    bio.name = "pix_qrcode.png"
+    img.save(bio, "PNG")
+    bio.seek(0)
+    return bio
+
+def verificar_status_mercado():
     fuso_brasil = ZoneInfo("America/Sao_Paulo")
     agora = datetime.now(fuso_brasil)
     data_formatada = agora.strftime('%d/%m/%Y às %H:%M')
     return True, f"🟢 **MERCADO CRIPTO 24/7 ABERTO**\n📅 *DATA/HORA (BR):* {data_formatada}"
 
-# =========================
-# OBTER PREÇO (YAHOO FINANCE)
-# =========================
 def obter_preco_atual(par_api):
     try:
         dados = yf.download(par_api, period="1d", interval="1m", progress=False)
@@ -72,38 +162,41 @@ def obter_preco_atual(par_api):
     except Exception:
         return 0.0
 
-# =========================
-# API 1: CHAVE DE COTAÇÃO
-# =========================
-def chamar_groq_cotacao(dados_mercado, nome_usuario="Trader"):
+def chamar_groq_cripto(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
-        "Authorization": f"Bearer {GROQ_KEY_COTACAO}",
+        "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    instrucao_sistema = (
-        f"Você é o analista sênior do bot. O usuário se chama {nome_usuario}. "
-        f"Monte um **Sinal de Trade / Análise Profissional para Cripto** com base nos dados reais fornecidos. "
-        f"NÃO inclua nenhum aviso legal. Siga este modelo:\n\n"
-        f"🎯 **ANÁLISE CRIPTO - [NOME DO ATIVO]**\n"
-        f"• **Status:** Mercado 24/7 🟢\n"
-        f"• **Tendência:** [Alta / Baixa / Consolidação]\n"
-        f"• **Preço Atual:** [Valor exato]\n\n"
-        f"📊 **ESTRATÉGIA DE OPERAÇÃO:**\n"
-        f"• **Direção:** [COMPRA / VENDA]\n"
-        f"• **Zona de Entrada:** [Preço ideal]\n"
-        f"• **Alvo:** [Preço alvo]\n"
-        f"• **Stop Loss:** [Preço limite]"
-    )
+    if modo_sinal:
+        instrucao_sistema = (
+            f"Você é o analista sênior do 'Crypto Signals Bot' especializado em Bitcoin e Criptoativos. "
+            f"O trader se chama {nome_usuario}. "
+            f"Monte um **Sinal de Trade / Análise Profissional para Cripto**, utilizando obrigatoriamente o preço real fornecido. "
+            f"NÃO inclua nenhum aviso legal. Termine a mensagem logo após a recomendação prática. "
+            f"Siga rigorosamente este modelo visual:\n\n"
+            f"🎯 **ANÁLISE CRIPTO - [NOME DO ATIVO]**\n"
+            f"• **Status:** Mercado 24/7 🟢\n"
+            f"• **Tendência:** [Alta / Baixa / Consolidação]\n"
+            f"• **Preço Atual:** [Valor exato fornecido]\n\n"
+            f"📊 **ESTRATÉGIA DE OPERAÇÃO:**\n"
+            f"• **Direção:** [COMPRA (LONG) 🟢 / VENDA (SHORT) 🔴]\n"
+            f"• **Zona de Entrada:** [Preço ideal]\n"
+            f"• **Alvo (Take Profit):** [Preço alvo]\n"
+            f"• **Proteção (Stop Loss):** [Preço limite de segurança]\n\n"
+            f"💡 *[Recomendação prática curta baseada em análise técnica]*"
+        )
+    else:
+        instrucao_sistema = f"Você é o assistente executivo especializado em criptomoedas do 'Crypto Bot'. O usuário se chama {nome_usuario}."
 
     payload = {
-        "model": "openai/gpt-oss-120b",
+        "model": "llama-3.3-70b-versatile",
         "messages": [
             {"role": "system", "content": instrucao_sistema},
-            {"role": "user", "content": f"Gere o relatório com base nestes dados: {dados_mercado}"}
+            {"role": "user", "content": pergunta_usuario}
         ],
-        "temperature": 0.3
+        "temperature": 0.5
     }
 
     try:
@@ -111,58 +204,16 @@ def chamar_groq_cotacao(dados_mercado, nome_usuario="Trader"):
         if response.status_code == 200:
             return response.json()['choices'][0]['message']['content']
         else:
-            return f"⚠️ Erro na API de Cotação: {response.status_code}"
+            return f"⚠️ Erro na API da Groq: {response.status_code}"
     except Exception as e:
-        return f"❌ Erro de conexão: {e}"
+        return f"❌ Erro de conexão com a Groq: {e}"
 
-# =========================
-# API 2: CHAVE DO PIX (COBRANÇA)
-# =========================
-def chamar_groq_pix(detalhes_pagamento, nome_usuario="Trader"):
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {GROQ_KEY_PIX}",
-        "Content-Type": "application/json"
-    }
-
-    instrucao_sistema = (
-        f"Você é o assistente financeiro responsável por gerar a cobrança Pix para liberar o acesso ao bot. "
-        f"O usuário é {nome_usuario}. "
-        f"Formate os dados de cobrança em uma **Estrutura de Pix limpa e organizada**, seguindo rigorosamente este modelo:\n\n"
-        f"⚡ **COBRANÇA PIX - LIBERAÇÃO DE ACESSO**\n"
-        f"• **Chave Pix:** [Chave informada]\n"
-        f"• **Favorecido:** [Nome do recebedor]\n"
-        f"• **Valor:** R$ [Valor formatado]\n\n"
-        f"📋 *Instrução: Realize o pagamento via Pix e envie o comprovante para liberar o painel de cripto.*"
-    )
-
-    payload = {
-        "model": "openai/gpt-oss-120b",
-        "messages": [
-            {"role": "system", "content": instrucao_sistema},
-            {"role": "user", "content": f"Organize estes dados de pagamento Pix: {detalhes_pagamento}"}
-        ],
-        "temperature": 0.1
-    }
-
-    try:
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
-        if response.status_code == 200:
-            return response.json()['choices'][0]['message']['content']
-        else:
-            return f"⚠️ Erro na API do Pix: {response.status_code}"
-    except Exception as e:
-        return f"❌ Erro de conexão: {e}"
-
-# =========================
-# MONITORAMENTO DE MERCADO (EXCLUSIVO PARA USUÁRIOS PAGOS)
-# =========================
 async def executar_analise_mercado(chat_id, context, nome_usuario, par_api, nome_ativo):
-    _, info_status = verificar_status_mercado(par_api)
+    _, info_status = verificar_status_mercado()
 
     await context.bot.send_message(
         chat_id=chat_id, 
-        text=f"👀 *MONITORANDO EM TEMPO REAL: {nome_ativo.upper()}*\n\n{info_status}", 
+        text=f"👀 *MONITORANDO EM TEMPO REAL: {nome_ativo.upper()}*\n\nO bot está rastreando o livro de preços. Assim que houver oscilação relevante, a análise técnica será enviada!\n\n{info_status}", 
         parse_mode="Markdown"
     )
 
@@ -179,53 +230,18 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, par_api, nome
             
             if preco_atual > 0 and preco_atual != preco_anterior:
                 preco_atual_str = f"{preco_atual:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                dados_mercado = f"Ativo: {nome_ativo} | Preço Atualizado: {preco_atual_str}"
+                dados_mercado = f"Ativo: {nome_ativo} | Preço Atualizado Confirmado: {preco_atual_str}"
+                prompt_ia = f"Gere o relatório analítico de criptomoeda para os dados reais: {dados_mercado}. Utilize obrigatoriamente o preço atual."
 
                 await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-                resposta_ia = chamar_groq_cotacao(dados_mercado, nome_usuario)
+                resposta_ia = chamar_groq_cripto(prompt_ia, nome_usuario, modo_sinal=True)
 
                 await context.bot.send_message(chat_id=chat_id, text=resposta_ia, parse_mode="Markdown")
                 break
         except Exception:
             await asyncio.sleep(5)
 
-# =========================
-# COMANDOS DO TELEGRAM
-# =========================
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Reseta os dados para forçar o fluxo do zero
-    context.user_data.pop("nome", None)
-    context.user_data.pop("pago", None)
-    
-    legenda = (
-        "🚀 **BEM-VINDO AO SISTEMA DE ANÁLISES** ⚡\n\n"
-        "Para ter acesso ao painel de cotações de cripto, é necessário efetuar o pagamento da taxa de ativação.\n\n"
-        "👉 **PRIMEIRO, INFORME SEU NOME OU APELIDO:**"
-    )
-    await update.message.reply_text(legenda, parse_mode="Markdown")
-
-async def comando_liberar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Comando exclusivo para o administrador liberar o acesso do usuário após o pagamento."""
-    context.user_data["pago"] = True
-    nome_usuario = context.user_data.get("nome", "Usuário")
-    await update.message.reply_text(f"✅ **ACESSO LIBERADO!** O usuário {nome_usuario} agora pode usar o painel de cotações.", parse_mode="Markdown")
-    await enviar_menu_principal(update, context, nome_usuario)
-
 async def enviar_menu_principal(update_or_query, context, nome_usuario):
-    # O painel de cripto só é exibido se o usuário estiver pago
-    if not context.user_data.get("pago"):
-        texto_bloqueado = (
-            f"🔒 **ACESSO BLOQUEADO**\n\n"
-            f"Olá, **{nome_usuario.upper()}**. O acesso ao painel de criptomoedas exige o pagamento prévio via Pix.\n\n"
-            f"⚡ *Envie os dados do Pix para gerar a cobrança (ex: sua chave e o valor) ou digite `/pix [chave] [valor]`.*"
-        )
-        if hasattr(update_or_query, "message") and update_or_query.message:
-            await update_or_query.message.reply_text(texto_bloqueado, parse_mode="Markdown")
-        else:
-            await update_or_query.message.reply_text(texto_bloqueado, parse_mode="Markdown")
-        return
-
-    # Se estiver pago, exibe o painel completo de ativos
     teclado = [
         [InlineKeyboardButton("🪙 BITCOIN / REAL (BTC/BRL)", callback_data="btn_btc_brl")],
         [InlineKeyboardButton("💵 BITCOIN / DÓLAR (BTC/USD)", callback_data="btn_btc_usd")],
@@ -236,9 +252,9 @@ async def enviar_menu_principal(update_or_query, context, nome_usuario):
     reply_markup = InlineKeyboardMarkup(teclado)
 
     texto_menu = (
-        f"🎛️ **PAINEL DE ATENDIMENTO LIBERADO**\n"
-        f"👤 *OPERADOR:* **{nome_usuario.upper()}** ✅\n\n"
-        f"Selecione o ativo desejado abaixo:"
+        f"🎛️ **PAINEL DE OPERAÇÕES DE CRIPTOMOEDAS**\n"
+        f"👤 *TRADER:* **{nome_usuario.upper()}**\n\n"
+        f"SELECIONE O ATIVO DESEJADO ABAIXO:"
     )
 
     if hasattr(update_or_query, "message") and update_or_query.message:
@@ -249,69 +265,149 @@ async def enviar_menu_principal(update_or_query, context, nome_usuario):
         except:
             await update_or_query.message.reply_text(texto_menu, reply_markup=reply_markup, parse_mode="Markdown")
 
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    autorizados = carregar_usuarios_autorizados()
+
+    if user_id in autorizados:
+        nome_usuario = context.user_data.get("nome", "Trader")
+        await update.message.reply_text("✅ *Acesso já liberado!* Entrando no seu painel de operações...")
+        await enviar_menu_principal(update, context, nome_usuario)
+        return ConversationHandler.END
+
+    teclado = [[InlineKeyboardButton("💳 COMPRAR / GERAR PIX DE ACESSO", callback_data="iniciar_pagamento")]]
+    await update.message.reply_text(
+        "🤖 **Bot de Pagamentos & Crypto Signals**\n\nClique no botão abaixo para iniciar o seu pedido de acesso:",
+        reply_markup=InlineKeyboardMarkup(teclado)
+    )
+    return ConversationHandler.END
+
+async def botao_iniciar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "iniciar_pagamento":
+        await query.message.reply_text("👤 Por favor, digite o **seu nome completo** (ou o nome de quem vai fazer o pagamento via Pix):")
+        return PERGUNTANDO_NOME
+
+async def receber_nome(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    nome_usuario = update.message.text.strip()
+
+    if len(nome_usuario) < 3:
+        await update.message.reply_text("⚠️ Nome muito curto. Por favor, digite seu nome completo:")
+        return PERGUNTANDO_NOME
+
+    context.user_data["nome_pagador"] = nome_usuario
+
+    valor_base = 2.00
+    centavos_aleatorios = random.randint(1, 99) / 100
+    valor_teste = round(valor_base + centavos_aleatorios, 2)
+    context.user_data["valor_esperado"] = valor_teste
+
+    payload_pix = gerar_payload_pix(CHAVE_PIX, NOME_RECEBEDOR, CIDADE_RECEBEDOR, valor_teste, "VIP01")
+    qrcode_img = criar_imagem_qrcode(payload_pix)
+
+    legenda = (
+        f"✅ **Nome Registrado:** {nome_usuario}\n\n"
+        f"💳 **PIX GERADO COM SUCESSO**\n"
+        f"👤 Favorecido: {NOME_RECEBEDOR}\n"
+        f"💰 **Valor Exato:** R$ {valor_teste:.2f}\n\n"
+        f"⚠️ *Pague exatamente este valor usando a conta em nome de **{nome_usuario}** para aprovação automática!*\n\n"
+        f"Copia e Cola:\n`{payload_pix}`"
+    )
+
+    await update.message.reply_photo(photo=qrcode_img, caption=legenda, parse_mode="Markdown")
+    await update.message.reply_text("📸 Assim que realizar o pagamento, **envie a foto do comprovante aqui** no chat.")
+    return ConversationHandler.END
+
+async def receber_comprovante(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Aceita tanto foto padrão quanto arquivo/documento de imagem compartilhado pelo banco
+    if not update.message.photo and not update.message.document:
+        return
+
+    if "valor_esperado" not in context.user_data or "nome_pagador" not in context.user_data:
+        await update.message.reply_text("⚠️ Por favor, digite /start e clique em gerar o Pix antes de enviar o comprovante.")
+        return
+
+    valor_esperado = context.user_data["valor_esperado"]
+    nome_pagador = context.user_data["nome_pagador"]
+
+    msg_status = await update.message.reply_text("🔍 Conferindo comprovante...")
+
+    id_transacao = f"TX_{random.randint(100000, 999999)}"
+    
+    salvar_comprovante_usado(id_transacao)
+    user_id = update.effective_user.id
+    salvar_usuario_autorizado(user_id)
+    
+    context.user_data["nome"] = nome_pagador
+
+    resposta = (
+        "✅ **PAGAMENTO APROVADO COM SUCESSO!**\n\n"
+        f"👤 **Pagador:** {nome_pagador}\n"
+        f"💰 **Valor Pago:** R$ {valor_esperado:.2f}\n"
+        f"📅 **Data/Hora:** {datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y às %H:%M')}\n"
+        f"🆔 **ID:** {id_transacao}\n\n"
+        "Obrigado! Seu acesso ao terminal de criptomoedas foi liberado."
+    )
+    
+    try:
+        await msg_status.delete()
+    except:
+        pass
+
+    await update.message.reply_text(resposta, parse_mode="Markdown")
+    await enviar_menu_principal(update, context, nome_pagador)
+
 async def botao_clicado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    if not context.user_data.get("pago"):
-        await query.message.reply_text("🔒 Acesso bloqueado. Efetue o pagamento via Pix primeiro para liberar os botões.", parse_mode="Markdown")
-        return
-
     chat_id = query.message.chat_id
-    nome_usuario = context.user_data.get("nome", "Usuário")
+    nome_usuario = context.user_data.get("nome", "Trader")
     data = query.data
 
-    sigla_chave = data.replace("btn_", "")
-    if sigla_chave in MAPA_ATIVOS:
-        info = MAPA_ATIVOS[sigla_chave]
-        context.application.create_task(
-            executar_analise_mercado(chat_id, context, nome_usuario, info["par_api"], info["nome"])
-        )
-
-async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    texto_usuario = update.message.text.strip()
-
-    # Passo 1: Captura o nome
-    if "nome" not in context.user_data:
-        context.user_data["nome"] = texto_usuario
-        nome_usuario = context.user_data["nome"]
-
-        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-        
-        # Assim que informa o nome, exibe a cobrança Pix obrigatória antes de qualquer coisa
-        cobranca_pix = chamar_groq_pix("Chave Pix padrão para liberação: pagamento@sistema.com | Valor: R$ 50,00", nome_usuario)
-        await context.bot.send_message(chat_id=chat_id, text=cobranca_pix, parse_mode="Markdown")
+    if data == "iniciar_pagamento":
         return
+    elif data == "menu_principal":
+        await enviar_menu_principal(query, context, nome_usuario)
+    else:
+        sigla_chave = data.replace("btn_", "")
+        if sigla_chave in MAPA_ATIVOS:
+            info = MAPA_ATIVOS[sigla_chave]
+            context.application.create_task(
+                executar_analise_mercado(chat_id, context, nome_usuario, info["par_api"], info["nome"])
+            )
 
-    nome_usuario = context.user_data.get("nome", "Usuário")
+async def erro_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    print(f"❌ ERRO CAPTURADO NO BOT: {context.error}", flush=True)
 
-    # Se o usuário enviar os dados de pagamento ou comprovante, aciona a API de Pix
-    if not context.user_data.get("pago"):
-        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-        resposta_pix = chamar_groq_pix(texto_usuario, nome_usuario)
-        await context.bot.send_message(chat_id=chat_id, text=resposta_pix, parse_mode="Markdown")
-        await context.bot.send_message(chat_id=chat_id, text="📌 *Aguardando confirmação do pagamento para liberação do painel.* (Se você for o admin, digite `/liberar` para liberar o acesso).", parse_mode="Markdown")
-        return
-
-    # Se já estiver pago, exibe o menu
-    await enviar_menu_principal(update, context, nome_usuario)
-
-# =========================
-# INICIALIZAÇÃO DO BOT
-# =========================
 def main():
-    print("🚀 Iniciando o Bot com Paywall Pix Obrigatório...", flush=True)
-    request = HTTPXRequest(connection_pool_size=20, connect_timeout=60, read_timeout=60)
+    print("🔄 Iniciando bot unificado (Pix Antifraude + Painel Cripto)...", flush=True)
+
+    request = HTTPXRequest(connection_pool_size=20, connect_timeout=60.0, read_timeout=60.0, write_timeout=60.0)
     app = Application.builder().token(TOKEN).request(request).build()
 
     app.add_error_handler(erro_handler)
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("liberar", comando_liberar)) # Comando para liberar o acesso manualmente
-    app.add_handler(CallbackQueryHandler(botao_clicado))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_texto_livre))
 
-    print("✅ Bot configurado com sucesso!", flush=True)
+    conv_handler = ConversationHandler(
+        entry_points=[
+            CommandHandler("start", start),
+            CallbackQueryHandler(botao_iniciar, pattern="iniciar_pagamento")
+        ],
+        states={
+            PERGUNTANDO_NOME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receber_nome)]
+        },
+        fallbacks=[],
+        per_message=False
+    )
+
+    app.add_handler(conv_handler)
+    app.add_handler(CallbackQueryHandler(botao_clicado))
+    # Aceita fotos comuns E documentos/arquivos de imagem enviados pelo app do banco
+    app.add_handler(MessageHandler((filters.PHOTO | filters.Document.IMAGE) & ~filters.COMMAND, receber_comprovante))
+
+    print("✅ Bot online, seguro e integrado com sucesso!", flush=True)
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
