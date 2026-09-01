@@ -142,7 +142,7 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False):
         if response.status_code == 200:
             return response.json()['choices'][0]['message']['content']
         else:
-            return f"⚠️ Erro na API da Groq: {response.status_code}"
+            return f"⚠️ Erro na API da Groq: {response.status_code} - Verifique se o modelo está ativo na sua conta Groq."
     except Exception as e:
         return f"❌ Erro de conexão com a Groq: {e}"
 
@@ -177,7 +177,7 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, sigla_chave, 
     print(f"📊 Monitor cripto ativado para {nome_ativo}. Preço base: {preco_anterior}", flush=True)
 
     ciclos = 0
-    max_ciclos = 180  # Limite de segurança de 15 segundos * 180 = ~45 minutos de monitoramento ativo por chamada para evitar loops infinitos órfãos
+    max_ciclos = 180  # Limite de segurança de 15 segundos * 180 = ~45 minutos de monitoramento ativo por chamada
 
     while ciclos < max_ciclos:
         try:
@@ -189,8 +189,7 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, sigla_chave, 
                 variacao_absoluta = abs(preco_atual - preco_anterior)
                 limite = MAPA_ATIVOS[sigla_chave]["limite_variacao"]
                 
-                # Dispara se houver variação superior ao limiar configurado ou mudança absoluta de patamar
-                if variacao_absoluta >= limite or ciclos >= 30: # Força disparo se passar muito tempo para dar feedback contínuo
+                if variacao_absoluta >= limite or ciclos >= 30:
                     print(f"🚨 Movimento detectado em {nome_ativo}: {preco_anterior} ➔ {preco_atual} (Var: {variacao_absoluta})", flush=True)
                     
                     preco_atual_str = f"{preco_atual:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -289,7 +288,6 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 
     nome_usuario = context.user_data.get("nome", "Trader")
     
-    # Atalho inteligente por texto se o usuário digitar direto "bitcoin", "btc", "solana", "ethereum" ou "ouro"
     if "bitcoin" in texto_usuario or "btc" in texto_usuario:
         if "dólar" in texto_usuario or "usd" in texto_usuario:
             info = MAPA_ATIVOS["btc_usd"]
