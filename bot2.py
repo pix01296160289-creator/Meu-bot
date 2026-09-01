@@ -95,7 +95,7 @@ def obter_preco_atual(par_api):
         return 0.0
 
 # =========================
-# CHAMADA À API DA GROQ (CORRIGIDA COM MODELO 100% COMPATÍVEL)
+# CHAMADA À API DA GROQ
 # =========================
 def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False):
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -127,7 +127,6 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False):
     else:
         instrucao_sistema = f"Você é o assistente executivo focado em criptomoedas, finanças quantitativas e inteligência de mercado do 'Crypto Bot'. O usuário se chama {nome_usuario}."
 
-    # Utilizando o modelo oficial padrão e altamente estável da Groq
     payload = {
         "model": "llama-3.1-8b-instant",
         "messages": [
@@ -321,7 +320,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
     resposta_ia = chamar_groq(update.message.text.strip(), nome_usuario, modo_sinal=False)
-    await context.ajustar_resposta_se_necessario = await context.bot.send_message(chat_id=chat_id, text=resposta_ia)
+    await context.bot.send_message(chat_id=chat_id, text=resposta_ia)
 
 # =========================
 # INICIALIZAÇÃO DO BOT
