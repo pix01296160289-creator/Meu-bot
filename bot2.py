@@ -95,7 +95,7 @@ def obter_preco_atual(par_api):
         return 0.0
 
 # =========================
-# CHAMADA À API DA GROQ
+# CHAMADA À API DA GROQ (MODELO COMPATÍVEL)
 # =========================
 def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False):
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -127,8 +127,9 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False):
     else:
         instrucao_sistema = f"Você é o assistente executivo focado em criptomoedas, finanças quantitativas e inteligência de mercado do 'Crypto Bot'. O usuário se chama {nome_usuario}."
 
+    # Utilizando o modelo padrão que funciona universalmente em contas Groq
     payload = {
-        "model": "llama-3.1-8b-instant",
+        "model": "gemma2-9b-it",
         "messages": [
             {"role": "system", "content": instrucao_sistema},
             {"role": "user", "content": pergunta_usuario}
