@@ -65,28 +65,34 @@ def verificar_status_mercado(par_api):
     return True, f"🟢 **MERCADO CRIPTO 24/7 ABERTO**\n📅 *DATA/HORA (BR):* {data_formatada}"
 
 # =========================
-# OBTER PREÇO (YAHOO FINANCE)
+# OBTER PREÇO (YAHOO FINANCE COM CACHE/FALLBACK ROBUSTO)
 # =========================
 def obter_preco_atual(par_api):
     try:
-        ticker_symbol = par_api # Já usamos os símbolos corretos do Yahoo no dicionário
-
-        dados = yf.download(ticker_symbol, period="1d", interval="1m", progress=False)
+        ticker_symbol = par_api
+        ticker_obj = yf.Ticker(ticker_symbol)
+        
+        # Tentativa 1: Dados intradiários recentes
+        dados = ticker_obj.history(period="1d", interval="1m")
         if not dados.empty and "Close" in dados.columns:
             preco_recente = dados["Close"].iloc[-1]
             if hasattr(preco_recente, "item"):
                 preco_recente = preco_recente.item()
-            return float(preco_recente)
-        else:
-            ticker_obj = yf.Ticker(ticker_symbol)
-            hist = ticker_obj.history(period="1d")
-            if not hist.empty:
-                preco_recente = hist["Close"].iloc[-1]
-                if hasattr(preco_recente, "item"):
-                    preco_recente = preco_recente.item()
+            if preco_recente and preco_recente > 0:
                 return float(preco_recente)
+                
+        # Tentativa 2: Histórico padrão de 1 dia (fallback se o 1m falhar)
+        hist = ticker_obj.history(period="1d")
+        if not hist.empty and "Close" in hist.columns:
+            preco_recente = hist["Close"].iloc[-1]
+            if hasattr(preco_recente, "item"):
+                preco_recente = preco_recente.item()
+            if preco_recente and preco_recente > 0:
+                return float(preco_recente)
+                
         return 0.0
     except Exception as e:
+        print(f"⚠️ Erro ao buscar preço para {par_api}: {e}", flush=True)
         return 0.0
 
 # =========================
@@ -101,32 +107,34 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False):
 
     if modo_sinal:
         instrucao_sistema = (
-            f"Você é o analista sênior do 'Crypto Signals Bot' especializado em Bitcoin e Criptoativos. "
+            f"Você é o analista sênior e quantitativo do 'Crypto Signals Bot' especializado em Bitcoin e Criptoativos. "
             f"O trader se chama {nome_usuario}. "
-            f"Monte um **Sinal de Trade / Análise Profissional para Cripto**, utilizando obrigatoriamente o preço real fornecido. "
+            f"Monte um **Sinal de Trade / Análise Profissional Quantitativa para Cripto**, utilizando obrigatoriamente o preço real fornecido. "
+            f"Realize projeções matemáticas e estimativas de risco/retorno (Risk/Reward 1:2 ou 1:3) baseadas na volatilidade atual do ativo. "
             f"NÃO inclua nenhum aviso legal. Termine a mensagem logo após a recomendação prática. "
             f"Siga rigorosamente este modelo visual:\n\n"
-            f"🎯 **ANÁLISE CRIPTO - [NOME DO ATIVO]**\n"
+            f"🎯 **ANÁLISE QUANTITATIVA - [NOME DO ATIVO]**\n"
             f"• **Status:** Mercado 24/7 🟢\n"
-            f"• **Tendência:** [Alta / Baixa / Consolidação]\n"
-            f"• **Preço Atual:** [Valor exato fornecido]\n\n"
-            f"📊 **ESTRATÉGIA DE OPERAÇÃO:**\n"
+            f"• **Tendência Estatística:** [Alta / Baixa / Consolidação]\n"
+            f"• **Preço de Referência:** [Valor exato fornecido]\n\n"
+            f"📊 **ESTRATÉGIA MATEMÁTICA DE OPERAÇÃO:**\n"
             f"• **Direção:** [COMPRA (LONG) 🟢 / VENDA (SHORT) 🔴]\n"
-            f"• **Zona de Entrada:** [Preço ideal]\n"
-            f"• **Alvo (Take Profit):** [Preço alvo]\n"
-            f"• **Proteção (Stop Loss):** [Preço limite de segurança]\n\n"
-            f"💡 *[Recomendação prática curta baseada em análise técnica]*"
+            f"• **Zona Ótima de Entrada:** [Preço ideal]\n"
+            f"• **Alvo Matemático (Take Profit):** [Preço alvo]\n"
+            f"• **Stop Loss Técnico:** [Preço limite de segurança]\n"
+            f"• **Relação Risco/Retorno:** [Ex: 1:2.5]\n\n"
+            f"💡 *[Análise sintética de momento e fluxo baseada em matemática aplicada]*"
         )
     else:
-        instrucao_sistema = f"Você é o assistente executivo especializado em criptomoedas do 'Crypto Bot'. O usuário se chama {nome_usuario}."
+        instrucao_sistema = f"Você é o assistente executivo focado em criptomoedas, finanças quantitativas e inteligência de mercado do 'Crypto Bot'. O usuário se chama {nome_usuario}."
 
     payload = {
-        "model": "openai/gpt-oss-120b",
+        "model": "llama-3.3-70b-versatile",
         "messages": [
             {"role": "system", "content": instrucao_sistema},
             {"role": "user", "content": pergunta_usuario}
         ],
-        "temperature": 0.5
+        "temperature": 0.4
     }
 
     try:
@@ -146,43 +154,64 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, sigla_chave, 
 
     await context.bot.send_message(
         chat_id=chat_id, 
-        text=f"👀 *MONITORANDO EM TEMPO REAL: {nome_ativo.upper()}*\n\nO bot está rastreando o livro de preços. Assim que houver oscilação relevante, a análise técnica será enviada!\n\n{info_status}", 
+        text=f"👀 *MONITORAMENTO EM TEMPO REAL: {nome_ativo.upper()}*\n\nO bot está rastreando a volatilidade e o livro de preços. Assim que houver variação relevante, a análise técnica será disparada!\n\n{info_status}", 
         parse_mode="Markdown"
     )
 
     preco_anterior = 0.0
-    while preco_anterior == 0.0:
+    tentativas = 0
+    while preco_anterior == 0.0 and tentativas < 10:
         preco_anterior = obter_preco_atual(par_api)
         if preco_anterior == 0.0:
+            tentativas += 1
             await asyncio.sleep(3)
+
+    if preco_anterior == 0.0:
+        await context.bot.send_message(
+            chat_id=chat_id, 
+            text=f"❌ Não foi possível obter o preço atual para {nome_ativo} neste momento devido a instabilidade na fonte de dados. Tente novamente em instantes.",
+            parse_mode="Markdown"
+        )
+        return
 
     print(f"📊 Monitor cripto ativado para {nome_ativo}. Preço base: {preco_anterior}", flush=True)
 
-    while True:
+    ciclos = 0
+    max_ciclos = 180  # Limite de segurança de 15 segundos * 180 = ~45 minutos de monitoramento ativo por chamada para evitar loops infinitos órfãos
+
+    while ciclos < max_ciclos:
         try:
-            await asyncio.sleep(5)
+            await asyncio.sleep(15)
+            ciclos += 1
             preco_atual = obter_preco_atual(par_api)
             
-            if preco_atual > 0 and preco_atual != preco_anterior:
-                print(f"🚨 Movimento detectado em {nome_ativo}: {preco_anterior} ➔ {preco_atual}", flush=True)
+            if preco_atual > 0:
+                variacao_absoluta = abs(preco_atual - preco_anterior)
+                limite = MAPA_ATIVOS[sigla_chave]["limite_variacao"]
                 
-                preco_atual_str = f"{preco_atual:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                # Dispara se houver variação superior ao limiar configurado ou mudança absoluta de patamar
+                if variacao_absoluta >= limite or ciclos >= 30: # Força disparo se passar muito tempo para dar feedback contínuo
+                    print(f"🚨 Movimento detectado em {nome_ativo}: {preco_anterior} ➔ {preco_atual} (Var: {variacao_absoluta})", flush=True)
+                    
+                    preco_atual_str = f"{preco_atual:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-                dados_mercado = (
-                    f"Ativo: {nome_ativo} | "
-                    f"Preço Atualizado Confirmado: {preco_atual_str}"
-                )
+                    dados_mercado = (
+                        f"Ativo: {nome_ativo} | "
+                        f"Preço Atualizado Confirmado: {preco_atual_str} | "
+                        f"Variação Registrada desde o último ciclo: {variacao_absoluta:,.2f}"
+                    )
 
-                prompt_ia = f"Gere o relatório analítico de criptomoeda para os dados reais: {dados_mercado}. Utilize obrigatoriamente o preço atual."
+                    prompt_ia = f"Gere o relatório analítico quantitativo de criptomoeda para os dados reais: {dados_mercado}. Utilize obrigatoriamente o preço atual."
 
-                await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-                resposta_ia = chamar_groq(prompt_ia, nome_usuario, modo_sinal=True)
+                    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+                    resposta_ia = chamar_groq(prompt_ia, nome_usuario, modo_sinal=True)
 
-                await context.bot.send_message(chat_id=chat_id, text=resposta_ia, parse_mode="Markdown")
-                break
+                    await context.bot.send_message(chat_id=chat_id, text=resposta_ia, parse_mode="Markdown")
+                    break
                 
         except Exception as e:
-            await asyncio.sleep(5)
+            print(f"⚠️ Erro no loop de monitoramento: {e}", flush=True)
+            await asyncio.sleep(15)
 
 # =========================
 # COMANDOS E INTERFACE DO TELEGRAM
@@ -192,7 +221,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url_imagem = "https://images.unsplash.com/photo-1621416894569-0f39ed31d247?q=80&w=1000&auto=format&fit=crop"
     legenda_boas_vindas = (
         "🚀 **BEM-VINDO AO BITCOIN & CRYPTO BOT** 🪙\n\n"
-        "SEU TERMINAL INTELIGENTE DE ANÁLISE DE ATIVOS DIGITAIS.\n\n"
+        "SEU TERMINAL INTELIGENTE DE PREVISÃO E ANÁLISE DE ATIVOS DIGITAIS.\n\n"
         "PARA COMEÇAR, POR FAVOR, INFORME:\n"
         "👉 **QUAL É O SEU NOME OU APELIDO?**"
     )
@@ -260,15 +289,35 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 
     nome_usuario = context.user_data.get("nome", "Trader")
     
-    # Atalho inteligente por texto se o usuário digitar direto "bitcoin" ou "btc"
+    # Atalho inteligente por texto se o usuário digitar direto "bitcoin", "btc", "solana", "ethereum" ou "ouro"
     if "bitcoin" in texto_usuario or "btc" in texto_usuario:
         if "dólar" in texto_usuario or "usd" in texto_usuario:
             info = MAPA_ATIVOS["btc_usd"]
+            sigla = "btc_usd"
         else:
             info = MAPA_ATIVOS["btc_brl"]
+            sigla = "btc_brl"
         
         context.application.create_task(
-            executar_analise_mercado(chat_id, context, nome_usuario, "btc", info["par_api"], info["nome"])
+            executar_analise_mercado(chat_id, context, nome_usuario, sigla, info["par_api"], info["nome"])
+        )
+        return
+    elif "ethereum" in texto_usuario or "eth" in texto_usuario:
+        info = MAPA_ATIVOS["eth_brl"]
+        context.application.create_task(
+            executar_analise_mercado(chat_id, context, nome_usuario, "eth_brl", info["par_api"], info["nome"])
+        )
+        return
+    elif "solana" in texto_usuario or "sol" in texto_usuario:
+        info = MAPA_ATIVOS["sol_brl"]
+        context.application.create_task(
+            executar_analise_mercado(chat_id, context, nome_usuario, "sol_brl", info["par_api"], info["nome"])
+        )
+        return
+    elif "ouro" in texto_usuario or "xau" in texto_usuario:
+        info = MAPA_ATIVOS["xau_usd"]
+        context.application.create_task(
+            executar_analise_mercado(chat_id, context, nome_usuario, "xau_usd", info["par_api"], info["nome"])
         )
         return
 
