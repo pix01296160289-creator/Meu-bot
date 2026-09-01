@@ -61,11 +61,10 @@ def verificar_status_mercado(par_api):
     agora = datetime.now(fuso_brasil)
     data_formatada = agora.strftime('%d/%m/%Y às %H:%M')
     
-    # Cripto opera 24 horas por dia, 7 dias por semana
     return True, f"🟢 **MERCADO CRIPTO 24/7 ABERTO**\n📅 *DATA/HORA (BR):* {data_formatada}"
 
 # =========================
-# OBTER PREÇO (YAHOO FINANCE COM CACHE/FALLBACK ROBUSTO)
+# OBTER PREÇO (YAHOO FINANCE COM FALLBACK ROBUSTO)
 # =========================
 def obter_preco_atual(par_api):
     try:
@@ -81,7 +80,7 @@ def obter_preco_atual(par_api):
             if preco_recente and preco_recente > 0:
                 return float(preco_recente)
                 
-        # Tentativa 2: Histórico padrão de 1 dia (fallback se o 1m falhar)
+        # Tentativa 2: Histórico padrão de 1 dia
         hist = ticker_obj.history(period="1d")
         if not hist.empty and "Close" in hist.columns:
             preco_recente = hist["Close"].iloc[-1]
@@ -96,7 +95,7 @@ def obter_preco_atual(par_api):
         return 0.0
 
 # =========================
-# CHAMADA À API DA GROQ (FOCO EM CRIPTO)
+# CHAMADA À API DA GROQ (CORRIGIDA COM MODELO 100% COMPATÍVEL)
 # =========================
 def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False):
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -128,8 +127,9 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False):
     else:
         instrucao_sistema = f"Você é o assistente executivo focado em criptomoedas, finanças quantitativas e inteligência de mercado do 'Crypto Bot'. O usuário se chama {nome_usuario}."
 
+    # Utilizando o modelo oficial padrão e altamente estável da Groq
     payload = {
-        "model": "llama-3.3-70b-versatile",
+        "model": "llama-3.1-8b-instant",
         "messages": [
             {"role": "system", "content": instrucao_sistema},
             {"role": "user", "content": pergunta_usuario}
@@ -142,7 +142,7 @@ def chamar_groq(pergunta_usuario, nome_usuario="Amigo", modo_sinal=False):
         if response.status_code == 200:
             return response.json()['choices'][0]['message']['content']
         else:
-            return f"⚠️ Erro na API da Groq: {response.status_code} - Verifique se o modelo está ativo na sua conta Groq."
+            return f"⚠️ Erro na API da Groq: {response.status_code} - Resposta: {response.text}"
     except Exception as e:
         return f"❌ Erro de conexão com a Groq: {e}"
 
@@ -177,7 +177,7 @@ async def executar_analise_mercado(chat_id, context, nome_usuario, sigla_chave, 
     print(f"📊 Monitor cripto ativado para {nome_ativo}. Preço base: {preco_anterior}", flush=True)
 
     ciclos = 0
-    max_ciclos = 180  # Limite de segurança de 15 segundos * 180 = ~45 minutos de monitoramento ativo por chamada
+    max_ciclos = 180  
 
     while ciclos < max_ciclos:
         try:
@@ -321,7 +321,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
     resposta_ia = chamar_groq(update.message.text.strip(), nome_usuario, modo_sinal=False)
-    await context.bot.send_message(chat_id=chat_id, text=resposta_ia)
+    await context.ajustar_resposta_se_necessario = await context.bot.send_message(chat_id=chat_id, text=resposta_ia)
 
 # =========================
 # INICIALIZAÇÃO DO BOT
