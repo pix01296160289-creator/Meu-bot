@@ -345,9 +345,35 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["nome"] = update.message.text.strip()
         nome_usuario = context.user_data["nome"]
 
+        # =========================
+        # 🎬 VINHETA DE CARREGAMENTO
+        # =========================
+        msg_vinheta = await context.bot.send_message(
+            chat_id=chat_id, 
+            text="⚙️ *Processando credencial de acesso...*", 
+            parse_mode="Markdown"
+        )
+        
+        await asyncio.sleep(1.2)
+        
+        await context.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=msg_vinheta.message_id,
+            text=f"🔐 *Terminal liberado para:* **{nome_usuario.upper()}**\n🔄 *Conectando aos servidores de mercado...*",
+            parse_mode="Markdown"
+        )
+        
+        await asyncio.sleep(1.5)
+        
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=msg_vinheta.message_id)
+        except:
+            pass
+
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
         boas_vindas_ia = chamar_groq(f"Dê boas-vindas curtas e em maiúsculas.", nome_usuario, modo_sinal=False)
         await context.bot.send_message(chat_id=chat_id, text=boas_vindas_ia.upper(), parse_mode="Markdown")
+        
         await enviar_menu_principal(update, context, nome_usuario)
         return
 
