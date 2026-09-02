@@ -346,29 +346,53 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         nome_usuario = context.user_data["nome"]
 
         # =========================
-        # 🎬 VINHETA DE CARREGAMENTO
+        # 🎬 VINHETA ANIMADA (5 SEGUNDOS)
         # =========================
         msg_vinheta = await context.bot.send_message(
             chat_id=chat_id, 
-            text="⚙️ *Processando credencial de acesso...*", 
+            text=f"⚙️ *Inicializando terminal para {nome_usuario.upper()}...*\n⏳ Carregando módulos [ 1/5 ]", 
             parse_mode="Markdown"
         )
         
-        await asyncio.sleep(1.2)
-        
+        await asyncio.sleep(1)
         await context.bot.edit_message_text(
             chat_id=chat_id,
             message_id=msg_vinheta.message_id,
-            text=f"🔐 *Terminal liberado para:* **{nome_usuario.upper()}**\n🔄 *Conectando aos servidores de mercado...*",
+            text=f"🔐 *Terminal liberado para:* **{nome_usuario.upper()}**\n⏳ Sincronizando dados com a API [ 2/5 ]",
             parse_mode="Markdown"
         )
         
-        await asyncio.sleep(1.5)
+        await asyncio.sleep(1)
+        await context.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=msg_vinheta.message_id,
+            text=f"🔐 *Terminal liberado para:* **{nome_usuario.upper()}**\n⏳ Verificando status dos mercados [ 3/5 ]",
+            parse_mode="Markdown"
+        )
+        
+        await asyncio.sleep(1)
+        await context.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=msg_vinheta.message_id,
+            text=f"🔐 *Terminal liberado para:* **{nome_usuario.upper()}**\n⏳ Conectando aos servidores de IA [ 4/5 ]",
+            parse_mode="Markdown"
+        )
+        
+        await asyncio.sleep(1)
+        await context.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=msg_vinheta.message_id,
+            text=f"🔐 *Terminal liberado para:* **{nome_usuario.upper()}**\n✅ Sistema pronto com sucesso! [ 5/5 ]",
+            parse_mode="Markdown"
+        )
+        
+        await asyncio.sleep(1)
         
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=msg_vinheta.message_id)
         except:
             pass
+        # =========================
 
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
         boas_vindas_ia = chamar_groq(f"Dê boas-vindas curtas e em maiúsculas.", nome_usuario, modo_sinal=False)
