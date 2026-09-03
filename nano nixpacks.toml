@@ -1,0 +1,6 @@
+[phases.setup]
+nixPkgs = ["python3", "gcc"]
+
+[phases.build]
+cmds = ["pip install -r requirements.txt"]
+
