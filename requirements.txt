@@ -3,5 +3,6 @@ qrcode[pil]
 requests
 yfinance
 python-dotenv
-quotexpy
+quotex-api
 python-dotenv
+
