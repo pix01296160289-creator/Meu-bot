@@ -1,12 +1,12 @@
 import os
 import asyncio
 from dotenv import load_dotenv
-from quotexpy.stable.client import Quotex
+from quotexpy import Quotex
 
-# Carrega as variáveis de ambiente (útil se testar localmente com .env)
+# Carrega as variáveis de ambiente
 load_dotenv()
 
-# Puxa o e-mail e a senha das variáveis de ambiente (configuradas no painel do seu deploy)
+# Puxa o e-mail e a senha das variáveis de ambiente
 EMAIL = os.getenv("QUOTEX_EMAIL")
 PASSWORD = os.getenv("QUOTEX_PASSWORD")
 
