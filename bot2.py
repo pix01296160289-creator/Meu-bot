@@ -3,10 +3,9 @@ import asyncio
 from dotenv import load_dotenv
 from quotex.api import Quotex
 
-# Carrega as variáveis de ambiente
+# Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
 
-# Puxa o e-mail e a senha das variáveis de ambiente
 EMAIL = os.getenv("QUOTEX_EMAIL")
 PASSWORD = os.getenv("QUOTEX_PASSWORD")
 
@@ -23,18 +22,23 @@ async def main():
     )
 
     print("Conectando à Quotex...")
-    check, reason = await client.connect()
-    
-    if check:
-        print("Conectado com sucesso!")
-        
-        # Puxa o saldo atual da conta
-        balance = await client.get_balance()
-        print(f"Saldo atual: {balance}")
-    else:
-        print(f"Falha na conexão: {reason}")
 
-    await client.close()
+    try:
+        check, reason = await client.connect()
+        if check:
+            print("Conectado com sucesso!")
+
+            # Obtém o saldo atual da conta
+            balance = await client.get_balance()
+            print(f"Saldo atual: {balance}")
+        else:
+            print(f"Falha na conexão: {reason}")
+
+    except Exception as e:
+        print(f"Ocorreu um erro inesperado: {e}")
+
+    finally:
+        await client.close()
 
 if __name__ == "__main__":
     asyncio.run(main())
