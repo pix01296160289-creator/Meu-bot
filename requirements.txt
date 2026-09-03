@@ -1,2 +1,2 @@
-quotex
+git+https://github.com/<usuario>/<repositorio>.git
 python-dotenv
