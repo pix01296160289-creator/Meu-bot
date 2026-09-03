@@ -1,2 +1,2 @@
-quotexapi
+quotex
 python-dotenv
