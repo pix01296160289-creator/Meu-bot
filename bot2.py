@@ -15,7 +15,7 @@ async def main():
         print("Erro: As credenciais QUOTEX_EMAIL e QUOTEX_PASSWORD não foram encontradas!")
         return
 
-    # Inicializa o cliente da Quotex com a nova biblioteca
+    # Inicializa o cliente da Quotex
     client = Quotex(
         email=EMAIL,
         password=PASSWORD,
