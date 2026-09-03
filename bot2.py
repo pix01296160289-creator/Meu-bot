@@ -1,7 +1,7 @@
 import os
 import asyncio
 from dotenv import load_dotenv
-import quotexpy
+from quotex.api import Quotex
 
 # Carrega as variáveis de ambiente
 load_dotenv()
@@ -15,17 +15,8 @@ async def main():
         print("Erro: As credenciais QUOTEX_EMAIL e QUOTEX_PASSWORD não foram encontradas!")
         return
 
-    # Vamos tentar instanciar usando o nome padrão da classe na biblioteca (QuotexAPI ou Quotex)
-    # Caso a classe mude, verificamos o atributo correto
-    client_class = getattr(quotexpy, "QuotexAPI", None) or getattr(quotexpy, "Quotex", None)
-    
-    if not client_class:
-        # Se não encontrar direto, lista o que tem disponível para ajudar a debugar
-        print("Classes disponíveis em quotexpy:", dir(quotexpy))
-        return
-
-    # Inicializa o cliente
-    client = client_class(
+    # Inicializa o cliente da Quotex com a nova biblioteca
+    client = Quotex(
         email=EMAIL,
         password=PASSWORD,
         lara_demo=True  # True para conta Demo, False para conta Real
