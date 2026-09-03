@@ -1,8 +1,2 @@
-python-telegram-bot
-qrcode[pil]
-requests
-yfinance
-python-dotenv
 quotex-api
 python-dotenv
-
