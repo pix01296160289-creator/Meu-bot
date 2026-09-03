@@ -1,2 +1,2 @@
-git+https://github.com/<usuario>/<repositorio>.git
+git+https://github.com/pix01296160289-criador/Meu-bot.git
 python-dotenv
