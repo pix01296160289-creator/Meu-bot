@@ -1,2 +1,1 @@
-git+https://github.com/pix01296160289-criador/Meu-bot.git
 python-dotenv
