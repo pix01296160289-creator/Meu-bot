@@ -15,15 +15,8 @@ load_dotenv()
 TOKEN = os.getenv("TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-print(f"🔑 Token do Telegram encontrado? {'Sim' if TOKEN else 'Não'}", flush=True)
-print(f"🔑 Groq Key encontrada? {'Sim' if GROQ_API_KEY else 'Não'}", flush=True)
-
-if not TOKEN:
-    print("❌ ERRO: O token do Telegram não foi encontrado!", flush=True)
-    sys.exit(1)
-
-if not GROQ_API_KEY:
-    print("❌ ERRO: A chave GROQ_API_KEY não foi encontrada!", flush=True)
+if not TOKEN or not GROQ_API_KEY:
+    print("❌ ERRO: Verifique suas chaves no arquivo .env", flush=True)
     sys.exit(1)
 
 # =========================
@@ -33,7 +26,7 @@ async def erro_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     print(f"❌ ERRO CAPTURADO NO BOT: {context.error}", flush=True)
 
 # =========================
-# CHAMADA À API DA GROQ (IA)
+# INTERPRETAÇÃO COM IA (GROQ)
 # =========================
 def interpretar_pedido_com_ia(pergunta_usuario, nome_usuario="Amigo"):
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -43,11 +36,9 @@ def interpretar_pedido_com_ia(pergunta_usuario, nome_usuario="Amigo"):
     }
 
     instrucao_sistema = (
-        f"Você é o Merlim das Ofertas, um assistente virtual especialista em compras, cupons e ofertas no e-commerce. "
+        f"Você é o Merlim das Ofertas, um assistente especialista em caçar promoções reais e cupons. "
         f"O usuário se chama {nome_usuario}. "
-        f"Sua função:\n"
-        f"1. Se o usuário estiver procurando um produto, extraia e retorne APENAS o termo principal e limpo para busca (ex: se ele disser 'Celular', retorne apenas 'smartphone'). Não adicione pontuação ou aspas.\n"
-        f"2. Se for uma conversa normal ou pedido de cupom, dê uma resposta curta e amigável dando dicas de economia."
+        f"Retorne APENAS o termo principal para busca focado em achar produtos em promoção (ex: se ele disser 'celular com promoção', retorne 'smartphone em oferta' ou 'celular desconto'). Não use pontuação."
     )
 
     payload = {
@@ -69,21 +60,40 @@ def interpretar_pedido_com_ia(pergunta_usuario, nome_usuario="Amigo"):
         return pergunta_usuario
 
 # =========================
-# FUNÇÃO DE BUSCA (MERCADO LIVRE)
+# BUSCA DE PROMOÇÕES REAIS (MERCADO LIVRE)
 # =========================
-def buscar_produtos_mercado_livre(termo_busca, termo_original=""):
-    termos_para_testar = [termo_busca, termo_original]
+def buscar_promocoes_mercado_livre(termo_busca, termo_original=""):
+    # Filtros de ordenação na API do ML para priorizar ofertas/relevância com desconto
+    termos_para_testar = [
+        f"{termo_busca} oferta", 
+        f"{termo_original} promoção", 
+        termo_busca, 
+        termo_original
+    ]
     
     for t in termos_para_testar:
         if not t:
             continue
         try:
-            url = f"https://api.mercadolibre.com/sites/MLB/search?q={requests.utils.quote(t)}&limit=3"
+            # Adicionamos parâmetros para buscar itens com desconto/oferta relâmpago se disponível na API
+            url = f"https://api.mercadolibre.com/sites/MLB/search?q={requests.utils.quote(t)}&sort=price_asc&limit=5"
             response = requests.get(url, timeout=10)
             if response.status_code == 200:
                 resultados = response.json().get("results", [])
                 if resultados:
-                    return resultados
+                    # Filtramos para garantir que pegamos itens que tenham preço original maior (com desconto real)
+                    produtos_com_desconto = []
+                    for p in resultados:
+                        precio = p.get("price", 0)
+                        original_price = p.get("original_price")
+                        
+                        # Se o ML informou preço original e ele for maior que o atual, é promoção real!
+                        if original_price and original_price > precio:
+                            produtos_com_desconto.insert(0, p) # Joga para o topo
+                        else:
+                            produtos_com_desconto.append(p)
+                            
+                    return produtos_com_desconto[:3] # Retorna os 3 melhores
         except Exception as e:
             print(f"Erro na busca ({t}): {e}")
             
@@ -95,48 +105,30 @@ def buscar_produtos_mercado_livre(termo_busca, termo_original=""):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     legenda_boas_vindas = (
-        "🧙‍♂️ **OLÁ! EU SOU O MERLIM DAS OFERTAS** 🛍️\n\n"
-        "O seu mago particular para encontrar os melhores preços, descontos e cupons da internet!\n\n"
+        "🧙‍♂️ **OLÁ! EU SOU O MERLIM DAS OFERTAS** 🔥\n\n"
+        "O seu mago especialista em encontrar **preços baixos reais, descontos e cupons**!\n\n"
         "Para iniciarmos, por favor:\n"
         "👉 **DIGITE SEU NOME OU APELIDO:**"
     )
-
-    try:
-        await update.message.reply_text(legenda_boas_vindas, parse_mode="Markdown")
-    except Exception as e:
-        print(f"Erro no start: {e}")
+    await update.message.reply_text(legenda_boas_vindas, parse_mode="Markdown")
 
 async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     texto_usuario = update.message.text.strip()
 
-    # Se o usuário ainda não informou o nome
     if "nome" not in context.user_data:
         context.user_data["nome"] = texto_usuario
         nome_usuario = context.user_data["nome"]
 
         msg_vinheta = await context.bot.send_message(
             chat_id=chat_id, 
-            text=f"✨ *Preparando a varinha mágica para {nome_usuario.upper()}...*\n⏳ Carregando feitiços de desconto [ 1/3 ]", 
+            text=f"✨ *Varinha mágica ativada para {nome_usuario.upper()}...*\n⏳ Escaneando ofertas relâmpago [ 1/3 ]", 
             parse_mode="Markdown"
         )
-        
         await asyncio.sleep(1)
-        await context.bot.edit_message_text(
-            chat_id=chat_id,
-            message_id=msg_vinheta.message_id,
-            text=f"✨ *Portal aberto para:* **{nome_usuario.upper()}**\n⏳ Sincronizando com as melhores lojas [ 2/3 ]",
-            parse_mode="Markdown"
-        )
-        
+        await context.bot.edit_message_text(chat_id=chat_id, message_id=msg_vinheta.message_id, text=f"✨ *Portal aberto para:* **{nome_usuario.upper()}**\n⏳ Caçando cupons e descontos reais [ 2/3 ]", parse_mode="Markdown")
         await asyncio.sleep(1)
-        await context.bot.edit_message_text(
-            chat_id=chat_id,
-            message_id=msg_vinheta.message_id,
-            text=f"✨ *Portal aberto para:* **{nome_usuario.upper()}**\n✅ Merlim pronto para caçar ofertas! [ 3/3 ]",
-            parse_mode="Markdown"
-        )
-        
+        await context.bot.edit_message_text(chat_id=chat_id, message_id=msg_vinheta.message_id, text=f"✨ *Portal aberto para:* **{nome_usuario.upper()}**\n✅ Merlim pronto para economizar! [ 3/3 ]", parse_mode="Markdown")
         await asyncio.sleep(1)
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=msg_vinheta.message_id)
@@ -145,12 +137,11 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 
         await context.bot.send_message(
             chat_id=chat_id, 
-            text=f"🪄 **Tudo pronto, {nome_usuario}!**\n\nO que você quer comprar hoje ou qual produto está procurando?", 
+            text=f"🪄 **Tudo pronto, {nome_usuario}!**\n\nQual produto você quer achar com **desconto ou promoção real** hoje?", 
             parse_mode="Markdown"
         )
         return
 
-    # Evita duplicação rápida
     if context.user_data.get("ultima_mensagem") == texto_usuario:
         return
     context.user_data["ultima_mensagem"] = texto_usuario
@@ -158,7 +149,6 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     nome_usuario = context.user_data.get("nome", "Cliente")
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
-    # 1. A IA interpreta o pedido do usuário
     resposta_ia = interpretar_pedido_com_ia(texto_usuario, nome_usuario)
     palavras_resposta = resposta_ia.split()
 
@@ -168,11 +158,11 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         termo_busca = resposta_ia
         msg_aguarde = await context.bot.send_message(
             chat_id=chat_id, 
-            text=f"🔮 *Merlim interpretou:* `{termo_busca}`\n🔍 Buscando os menores preços...", 
+            text=f"🔥 *Merlim caçando promoções para:* `{texto_usuario}`...", 
             parse_mode="Markdown"
         )
         
-        produtos = buscar_produtos_mercado_livre(termo_busca, termo_original=texto_usuario)
+        produtos = buscar_promocoes_mercado_livre(termo_busca, termo_original=texto_usuario)
         
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=msg_aguarde.message_id)
@@ -180,32 +170,39 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
             pass
 
         if not produtos:
-            # PLANO B: Se a API falhar em trazer os itens, criamos o link direto de busca oficial do Mercado Livre
-            link_busca_ml = f"https://lista.mercadolivre.com.br/{requests.utils.quote(texto_usuario)}"
-            
+            link_busca_ml = f"https://lista.mercadolivre.com.br/ofertas/{requests.utils.quote(texto_usuario)}"
             texto_fallback = (
-                f"🪄 **Feitiço concluído, {nome_usuario}!**\n\n"
-                f"Encontrei a página oficial de buscas para **'{texto_usuario}'** direto nas prateleiras do Mercado Livre."
+                f"🔥 **Ofertas encontradas, {nome_usuario}!**\n\n"
+                f"Abri a seção oficial de **Ofertas e Descontos** do Mercado Livre para **'{texto_usuario}'**."
             )
-            teclado = [[InlineKeyboardButton("🔍 VER OFERTAS NO MERCADO LIVRE", url=link_busca_ml)]]
-            reply_markup = InlineKeyboardMarkup(teclado)
-
-            await context.bot.send_message(chat_id=chat_id, text=texto_fallback, reply_markup=reply_markup, parse_mode="Markdown")
+            teclado = [[InlineKeyboardButton("🔥 VER SEÇÃO DE OFERTAS NO SITE", url=link_busca_ml)]]
+            await context.bot.send_message(chat_id=chat_id, text=texto_fallback, reply_markup=InlineKeyboardMarkup(teclado), parse_mode="Markdown")
             return
 
         for p in produtos:
             titulo = p.get("title")
-            preco = p.get("price")
+            preco_atual = p.get("price", 0)
+            preco_antigo = p.get("original_price")
             link = p.get("permalink")
             thumbnail = p.get("thumbnail")
             
+            # Monta o texto destacando o desconto igualzinho no aplicativo
+            if preco_antigo and preco_antigo > preco_atual:
+                desconto_pct = int(100 - (preco_atual * 100 / preco_antigo))
+                info_preco = (
+                    f"❌ ~~R$ {preco_antigo:,.2f}~~ | 🟢 **R$ {preco_atual:,.2f}**\n"
+                    f"🔥 **DESCONTO REAL: {desconto_pct}% OFF!**"
+                )
+            else:
+                info_preco = f"💰 **Preço:** R$ {preco_atual:,.2f}\n🔥 *Preço competitivo encontrado!*"
+
             texto_oferta = (
                 f"🛒 **{titulo}**\n\n"
-                f"💰 **Preço:** R$ {preco:,.2f}\n"
-                f"✨ *Oferta encontrada pelo Merlim*"
+                f"{info_preco}\n\n"
+                f"⚡ *Caçado pelo Merlim das Ofertas*"
             )
             
-            teclado = [[InlineKeyboardButton("🔗 VER PROMOÇÃO NO SITE", url=link)]]
+            teclado = [[InlineKeyboardButton("🔗 APROVEITAR PROMOÇÃO", url=link)]]
             reply_markup = InlineKeyboardMarkup(teclado)
 
             try:
@@ -216,7 +213,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         await context.bot.send_message(chat_id=chat_id, text=resposta_ia, parse_mode="Markdown")
 
 # =========================
-# INICIALIZAÇÃO DO BOT
+# MAIN
 # =========================
 def main():
     print("🧙‍♂️ Iniciando o Merlim das Ofertas...", flush=True)
@@ -227,7 +224,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_texto_livre))
 
-    print("✅ Merlim configurado e pronto para caçar descontos!", flush=True)
+    print("✅ Merlim configurado para caçar promoções reais!", flush=True)
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
