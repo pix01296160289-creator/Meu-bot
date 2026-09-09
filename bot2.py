@@ -4,7 +4,7 @@ import asyncio
 from dotenv import load_dotenv
 import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
 
 # =========================
@@ -46,8 +46,8 @@ def interpretar_pedido_com_ia(pergunta_usuario, nome_usuario="Amigo"):
         f"Você é o Merlim das Ofertas, um assistente virtual especialista em compras, cupons e ofertas no e-commerce. "
         f"O usuário se chama {nome_usuario}. "
         f"Sua função:\n"
-        f"1. Se o usuário estiver procurando um produto, responda APENAS com o termo exato e limpo que deve ser pesquisado na API de e-commerce (ex: se ele disser 'quero um celular samsung bom', você responde apenas 'smartphone samsung').\n"
-        f"2. Se for uma conversa normal, dúvida sobre compras ou pedidos de cupom, dê uma resposta amigável, prestativa e curta dando dicas de economia."
+        f"1. Se o usuário estiver procurando um produto (ex: celular, caixa de som, tênis), responda APENAS com o termo principal e limpo para busca (ex: 'smartphone', 'caixa de som bluetooth', 'tenis esportivo'). Não adicione pontuação.\n"
+        f"2. Se for uma conversa normal ou pedido de cupom, dê uma resposta curta e amigável dando dicas de economia."
     )
 
     payload = {
@@ -69,15 +69,27 @@ def interpretar_pedido_com_ia(pergunta_usuario, nome_usuario="Amigo"):
         return pergunta_usuario
 
 # =========================
-# FUNÇÃO DE BUSCA (MERCADO LIVRE)
+# FUNÇÃO DE BUSCA (MERCADO LIVRE COM FALLBACK)
 # =========================
-def buscar_produtos_mercado_livre(termo_busca):
+def buscar_produtos_mercado_livre(termo_busca, termo_original=""):
     try:
-        url = f"https://api.mercadolibre.com/sites/MLB/search?q={termo_busca}&limit=3"
+        # Primeira tentativa com o termo gerado pela IA
+        url = f"https://api.mercadolibre.com/sites/MLB/search?q={requests.utils.quote(termo_busca)}&limit=3"
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
-            dados = response.json()
-            return dados.get("results", [])
+            resultados = response.json().get("results", [])
+            if resultados:
+                return resultados
+
+        # Se não achar e o termo original for diferente, tenta com o que o usuário digitou diretamente
+        if termo_original and termo_original.lower() != termo_busca.lower():
+            url_original = f"https://api.mercadolibre.com/sites/MLB/search?q={requests.utils.quote(termo_original)}&limit=3"
+            response_orig = requests.get(url_original, timeout=10)
+            if response_orig.status_code == 200:
+                resultados_orig = response_orig.json().get("results", [])
+                if resultados_orig:
+                    return resultados_orig
+
         return []
     except Exception as e:
         print(f"Erro na busca: {e}")
@@ -109,7 +121,6 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["nome"] = texto_usuario
         nome_usuario = context.user_data["nome"]
 
-        # Vinheta de carregamento charmosa
         msg_vinheta = await context.bot.send_message(
             chat_id=chat_id, 
             text=f"✨ *Preparando a varinha mágica para {nome_usuario.upper()}...*\n⏳ Carregando feitiços de desconto [ 1/3 ]", 
@@ -147,15 +158,16 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 
     nome_usuario = context.user_data.get("nome", "Cliente")
 
-    # Ação de digitação para parecer natural
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
     # 1. A IA interpreta o pedido do usuário
     resposta_ia = interpretar_pedido_com_ia(texto_usuario, nome_usuario)
     palavras_resposta = resposta_ia.split()
 
-    # 2. Se a IA indicar que é um produto (respostas curtas), fazemos a busca no Mercado Livre
-    if len(palavras_resposta) <= 4 and "cupom" not in texto_usuario.lower() and "olá" not in texto_usuario.lower():
+    # 2. Identifica se é uma busca de produto (menos de 6 palavras na resposta da IA ou sem termos conversacionais longos)
+    is_duvida = any(termo in texto_usuario.lower() for term in ["como", "qual", "onde", "ajuda", "cupom", "olá"])
+    
+    if len(palavras_resposta) <= 6 and not is_duvida:
         termo_busca = resposta_ia
         msg_aguarde = await context.bot.send_message(
             chat_id=chat_id, 
@@ -163,7 +175,8 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
             parse_mode="Markdown"
         )
         
-        produtos = buscar_produtos_mercado_livre(termo_busca)
+        # Executa a busca com fallback integrado
+        produtos = buscar_produtos_mercado_livre(termo_busca, termo_original=texto_usuario)
         
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=msg_aguarde.message_id)
@@ -171,7 +184,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
             pass
 
         if not produtos:
-            await context.bot.send_message(chat_id=chat_id, text="❌ O feitiço não encontrou ofertas exatas para isso. Tente descrever de outro modo!")
+            await context.bot.send_message(chat_id=chat_id, text="❌ O feitiço não encontrou ofertas exatas para isso. Tente descrever de outro modo (ex: *Smartphone Samsung* ou *Caixa de som JBL*)!", parse_mode="Markdown")
             return
 
         for p in produtos:
@@ -194,7 +207,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
             except:
                 await context.bot.send_message(chat_id=chat_id, text=texto_oferta, reply_markup=reply_markup, parse_mode="Markdown")
     else:
-        # Se for uma dica ou conversa geral, a IA responde diretamente
+        # Se for uma dúvida geral, responde diretamente
         await context.bot.send_message(chat_id=chat_id, text=resposta_ia, parse_mode="Markdown")
 
 # =========================
@@ -214,4 +227,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-            
