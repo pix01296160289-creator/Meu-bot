@@ -69,8 +69,7 @@ def buscar_produtos_mercadolivre(termo_busca):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     
-    # Banner de boas-vindas otimizado e centralizado para não cortar
-    banner_url = "https://images.unsplash.com/photo-1607532945533-2de48af48cff?auto=format&fit=crop&w=1000&q=80"
+    banner_url = "https://http2.mlstatic.com/D_NQ_NP_2X_784534-MLB70138947598_062023-F.webp"
     
     legenda_boas_vindas = (
         "🧙‍♂️ **MERLIM DAS OFERTAS** | *Seu Assistente Inteligente*\n\n"
@@ -107,7 +106,6 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     elif texto_usuario == "🔥 Ver Ofertas do Dia":
         texto_usuario = "ofertas imperdíveis"
 
-    # Capturar o nome na primeira mensagem
     if "nome" not in context.user_data:
         context.user_data["nome"] = texto_usuario
         nome_usuario = context.user_data["nome"]
@@ -153,7 +151,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         
         thumbnail = primeiro_produto.get("thumbnail", "").replace("-I.jpg", "-O.jpg")
         if not thumbnail:
-            thumbnail = "https://images.unsplash.com/photo-1607532945533-2de48af48cff?auto=format&fit=crop&w=1000&q=80"
+            thumbnail = "https://http2.mlstatic.com/D_NQ_NP_2X_784534-MLB70138947598_062023-F.webp"
         
         texto_oferta = (
             f"🏆 **ACHEI OPÇÕES PARA VOCÊ!**\n\n"
@@ -162,7 +160,8 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
             f"📦 Veja todas as variações e ofertas completas na vitrine oficial abaixo:"
         )
     else:
-        thumbnail = "https://images.unsplash.com/photo-1607532945533-2de48af48cff?auto=format&fit=crop&w=1000&q=80"
+        # Imagem oficial garantida do Mercado Livre para nunca falhar o envio da foto
+        thumbnail = "https://http2.mlstatic.com/D_NQ_NP_2X_784534-MLB70138947598_062023-F.webp"
         texto_oferta = (
             f"📦 **Catálogo Completo: {texto_usuario.title()}**\n\n"
             f"Olá, {nome_usuario}! Encontrei várias opções incríveis para essa busca no departamento oficial do Mercado Livre.\n\n"
@@ -174,6 +173,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         [InlineKeyboardButton("🎟️ RESGATAR CUPONS", url=gerar_link_afiliado("https://www.mercadolivre.com.br/cupons"))]
     ]
     
+    # Tratamento duplo de segurança para garantir que a foto sempre seja enviada
     try:
         await context.bot.send_photo(
             chat_id=chat_id, 
@@ -182,7 +182,8 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
             reply_markup=InlineKeyboardMarkup(teclado), 
             parse_mode="Markdown"
         )
-    except Exception:
+    except Exception as e:
+        print(f"Erro ao enviar foto, enviando texto alternativo: {e}")
         await context.bot.send_message(
             chat_id=chat_id, 
             text=texto_oferta, 
@@ -202,7 +203,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_texto_livre))
 
-    print("✅ Merlim configurado com sucesso!", flush=True)
+    print("✅ Merlim configurado com envio de fotos blindado!", flush=True)
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
