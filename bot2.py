@@ -17,7 +17,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 AFFILIATE_ID = os.getenv("AFFILIATE_ID", "")
 
 if not TOKEN or not GROQ_API_KEY:
-    print("❌ ERRO: Verifique suas chaves TOKEN e GROQ_API_KEY", flush=True)
+    print("❌ ERRO: Verifique suas chaves TOKEN e GROQ_API_KEY no arquivo .env ou no Railway", flush=True)
     sys.exit(1)
 
 # =========================
@@ -36,20 +36,33 @@ def gerar_link_afiliado(url_produto):
     return f"{url_produto}{separador}matt_tool={AFFILIATE_ID}"
 
 # =========================
-# BUSCA DE PRODUTOS OU LISTA NO MERCADO LIVRE
+# BUSCA DE PRODUTOS NO MERCADO LIVRE
 # =========================
 def buscar_produtos_mercadolivre(termo_busca):
+    # Dicionário para otimizar pesquisas de termos comuns
+    mapa_sinonimos = {
+        "celular": "smartphone",
+        "tênis": "tenis esportivo",
+        "tenis": "tenis esportivo",
+        "notebook": "notebook laptop",
+        "ferramentas": "jogo de ferramentas"
+    }
+    
+    termo_limpo = termo_busca.strip().lower()
+    termo_api = mapa_sinonimos.get(termo_limpo, termo_busca)
+
     try:
-        # Busca otimizada ordenada pelo menor preço
-        url = f"https://api.mercadolibre.com/sites/MLB/search?q={requests.utils.quote(termo_busca)}&sort=price_asc&limit=5"
-        response = requests.get(url, timeout=10)
+        # Header para evitar bloqueio da API do Mercado Livre
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        url = f"https://api.mercadolibre.com/sites/MLB/search?q={requests.utils.quote(termo_api)}&limit=5"
+        response = requests.get(url, headers=headers, timeout=10)
         
         if response.status_code == 200:
             resultados = response.json().get("results", [])
             if resultados:
                 return resultados
     except Exception as e:
-        print(f"Erro na busca: {e}")
+        print(f"Erro na busca API ML: {e}")
     return []
 
 # =========================
@@ -58,7 +71,8 @@ def buscar_produtos_mercadolivre(termo_busca):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     
-    banner_url = "https://images.unsplash.com/photo-1607532945533-2de48af48cff?auto=format&fit=crop&w=1000&q=80"
+    # Logo Oficial do Mercado Livre como Banner de Entrada
+    banner_url = "https://http2.mlstatic.com/frontend-assets/ml-web-navigation/ui-navigation/6.6.3/mercadolibre/logo__large_plus.png"
     
     legenda_boas_vindas = (
         "🧙‍♂️ **MERLIM DAS OFERTAS** | *Seu Assistente Inteligente*\n\n"
@@ -78,7 +92,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=teclado_menu, 
             parse_mode="Markdown"
         )
-    except:
+    except Exception:
         await update.message.reply_text(legenda_boas_vindas, reply_markup=teclado_menu, parse_mode="Markdown")
 
 async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -95,7 +109,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     elif texto_usuario == "🔥 Ver Ofertas do Dia":
         texto_usuario = "ofertas imperdíveis"
 
-    # Capturar o nome
+    # Capturar o nome na primeira mensagem do usuário
     if "nome" not in context.user_data:
         context.user_data["nome"] = texto_usuario
         nome_usuario = context.user_data["nome"]
@@ -129,17 +143,21 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     
     try:
         await context.bot.delete_message(chat_id=chat_id, message_id=msg_aguarde.message_id)
-    except:
+    except Exception:
         pass
 
     link_busca_geral = gerar_link_afiliado(f"https://lista.mercadolivre.com.br/{requests.utils.quote(texto_usuario)}")
 
-    # Se a API retornou produtos, usa o primeiro item com segurança
+    # Se a API retornou produtos, exibe a oferta com foto do produto em alta
     if produtos:
         primeiro_produto = produtos[0]
         titulo = primeiro_produto.get("title")
         preco_atual = primeiro_produto.get("price", 0)
-        thumbnail = primeiro_produto.get("thumbnail")
+        
+        # Aumenta a qualidade da imagem da API
+        thumbnail = primeiro_produto.get("thumbnail", "").replace("-I.jpg", "-O.jpg")
+        if not thumbnail:
+            thumbnail = "https://http2.mlstatic.com/frontend-assets/ml-web-navigation/ui-navigation/6.6.3/mercadolibre/logo__large_plus.png"
         
         texto_oferta = (
             f"🏆 **ACHEI OPÇÕES PARA VOCÊ!**\n\n"
@@ -148,11 +166,11 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
             f"📦 Veja todas as variações e ofertas completas na vitrine oficial abaixo:"
         )
     else:
-        # Fallback neutro voltado a tecnologia/compras gerais (substituindo a imagem de roupas)
-        thumbnail = "https://images.unsplash.com/photo-1526738549149-8e07eca6c147?auto=format&fit=crop&w=1000&q=80"
+        # Fallback padronizado com o Logo Oficial do Mercado Livre
+        thumbnail = "https://http2.mlstatic.com/frontend-assets/ml-web-navigation/ui-navigation/6.6.3/mercadolibre/logo__large_plus.png"
         texto_oferta = (
             f"📦 **Catálogo Completo: {texto_usuario.title()}**\n\n"
-            f"Olá, {nome_usuario}! Encontrei várias opções incríveis para essa busca no departamento oficial.\n\n"
+            f"Olá, {nome_usuario}! Encontrei várias opções incríveis para essa busca no departamento oficial do Mercado Livre.\n\n"
             f"👇 *Clique no botão abaixo para ver a vitrine completa com segurança:*"
         )
 
@@ -169,7 +187,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
             reply_markup=InlineKeyboardMarkup(teclado), 
             parse_mode="Markdown"
         )
-    except:
+    except Exception:
         await context.bot.send_message(
             chat_id=chat_id, 
             text=texto_oferta, 
@@ -189,7 +207,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_texto_livre))
 
-    print("✅ Merlim configurado com busca refinada!", flush=True)
+    print("✅ Merlim configurado com branding oficial!", flush=True)
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
