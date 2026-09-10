@@ -40,14 +40,14 @@ def gerar_link_afiliado(url_produto):
 # =========================
 def buscar_produtos_mercadolivre(termo_busca):
     try:
-        # Busca os produtos ordenados pelo menor preço
+        # Busca otimizada ordenada pelo menor preço
         url = f"https://api.mercadolibre.com/sites/MLB/search?q={requests.utils.quote(termo_busca)}&sort=price_asc&limit=5"
         response = requests.get(url, timeout=10)
         
         if response.status_code == 200:
             resultados = response.json().get("results", [])
             if resultados:
-                return resultados # Retorna a lista de produtos encontrados
+                return resultados
     except Exception as e:
         print(f"Erro na busca: {e}")
     return []
@@ -134,7 +134,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 
     link_busca_geral = gerar_link_afiliado(f"https://lista.mercadolivre.com.br/{requests.utils.quote(texto_usuario)}")
 
-    # Se a API retornou produtos, pegamos o primeiro para usar a foto e o menor preço reais de destaque!
+    # Se a API retornou produtos, usa o primeiro item com segurança
     if produtos:
         primeiro_produto = produtos[0]
         titulo = primeiro_produto.get("title")
@@ -148,8 +148,8 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
             f"📦 Veja todas as variações e ofertas completas na vitrine oficial abaixo:"
         )
     else:
-        # Fallback caso a API venha totalmente vazia
-        thumbnail = "https://images.unsplash.com/photo-1555529771-835f59fc5efe?auto=format&fit=crop&w=1000&q=80"
+        # Fallback neutro voltado a tecnologia/compras gerais (substituindo a imagem de roupas)
+        thumbnail = "https://images.unsplash.com/photo-1526738549149-8e07eca6c147?auto=format&fit=crop&w=1000&q=80"
         texto_oferta = (
             f"📦 **Catálogo Completo: {texto_usuario.title()}**\n\n"
             f"Olá, {nome_usuario}! Encontrei várias opções incríveis para essa busca no departamento oficial.\n\n"
@@ -189,7 +189,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_texto_livre))
 
-    print("✅ Merlim configurado com sucesso!", flush=True)
+    print("✅ Merlim configurado com busca refinada!", flush=True)
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
