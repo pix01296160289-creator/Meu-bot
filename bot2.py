@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import asyncio
 from dotenv import load_dotenv
 import requests
@@ -40,6 +41,13 @@ def gerar_link_afiliado(url_produto):
     return f"{url_produto}{separador}matt_tool={AFFILIATE_ID}"
 
 # =========================
+# LIMPEZA DE TEXTO
+# =========================
+def limpar_termo(texto):
+    texto_limpo = re.sub(r'[^\w\s]', '', texto)
+    return ' '.join(texto_limpo.split()).strip()
+
+# =========================
 # INTELIGÊNCIA ARTIFICIAL (GROQ)
 # =========================
 def interpretar_com_ia(texto_usuario):
@@ -61,18 +69,19 @@ def interpretar_com_ia(texto_usuario):
             max_tokens=50
         )
         resposta = chat_completion.choices[0].message.content.strip()
-        return resposta
+        return limpar_termo(resposta)
     except Exception as e:
         print(f"Erro na API da Groq: {e}")
-        return texto_usuario
+        return limpar_termo(texto_usuario)
 
 # =========================
 # BUSCA DE PRODUTOS NO MERCADO LIVRE
 # =========================
 def buscar_produtos_mercadolivre(termo_busca):
+    termo_tratado = limpar_termo(termo_busca)
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        url = f"https://api.mercadolibre.com/sites/MLB/search?q={requests.utils.quote(termo_busca)}&limit=5"
+        url = f"https://api.mercadolibre.com/sites/MLB/search?q={requests.utils.quote(termo_tratado)}&limit=5"
         response = requests.get(url, headers=headers, timeout=10)
         
         if response.status_code == 200:
@@ -93,7 +102,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     legenda_boas_vindas = (
         "🧙‍♂️ **MERLIM DAS OFERTAS** | *Seu Assistente Inteligente*\n\n"
-        "Seja muito bem-vindo! Agora sou impulsionado por Inteligência Artificial para caçar o **menor preço do Mercado Livre** para você.\n\n"
+        "Seja muito bem-vindo! Agora sou impulsionado por Inteligência Artificial e trago as fotos reais dos produtos do Mercado Livre para você.\n\n"
         "👉 **Para começarmos, digite o seu nome ou apelido abaixo:**"
     )
 
@@ -117,28 +126,29 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     texto_usuario = update.message.text.strip()
 
     # Tratamento para os botões fixos
-    if texto_usuario == "🎟️ Resgatar Cupons" or "Cupons" in texto_usuario:
+    if "Cupons" in texto_usuario:
         link_cupons = gerar_link_afiliado("https://www.mercadolivre.com.br/cupons")
         await update.message.reply_text(
             f"🎟️ **Central de Cupons do Mercado Livre**\n\nAcesse o link abaixo para resgatar seus descontos:\n\n{link_cupons}",
             parse_mode="Markdown"
         )
         return
-    elif texto_usuario == "🔥 Ver Ofertas do Dia" or "Ofertas" in texto_usuario:
+    elif "Ofertas" in texto_usuario:
         texto_usuario = "ofertas imperdíveis"
 
     # Captura o nome se ainda não estiver definido
     if "nome" not in context.user_data:
-        if len(texto_usuario) < 2 or texto_usuario in ["🔥 Ver Ofertas do Dia", "🎟️ Resgatar Cupons"]:
+        nome_limpo = limpar_termo(texto_usuario)
+        if len(nome_limpo) < 2 or "Ofertas" in texto_usuario or "Cupons" in texto_usuario:
             await update.message.reply_text("⚠️ Por favor, digite um nome ou apelido válido:")
             return
         
-        context.user_data["nome"] = texto_usuario
+        context.user_data["nome"] = nome_limpo
         nome_usuario = context.user_data["nome"]
 
         await context.bot.send_message(
             chat_id=chat_id, 
-            text=f"✨ **Tudo pronto, {nome_usuario}!**\n\nAgora você pode conversar comigo naturalmente. **O que você está procurando hoje?** (ex: *quero uma máquina de solda potente, celular barato, etc*):",
+            text=f"✨ **Tudo pronto, {nome_usuario}!**\n\nAgora você pode conversar comigo naturalmente. **O que você está procurando hoje?** (ex: *quero um tênis esportivo, celular barato, etc*):",
             reply_markup=ReplyKeyboardMarkup(
                 [[KeyboardButton("📱 Celular"), KeyboardButton("👟 Tênis"), KeyboardButton("💻 Notebook")],
                  [KeyboardButton("⚡ Ferramentas"), KeyboardButton("🔥 Ofertas do Dia")]],
@@ -151,14 +161,14 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     nome_usuario = context.user_data.get("nome", "Cliente")
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
-    # IA entra em ação para interpretar o pedido do usuário
+    # IA interpreta e limpa o pedido do usuário
     termo_inteligente = interpretar_com_ia(texto_usuario)
-    if termo_inteligente == "CONVERSA":
-        termo_inteligente = texto_usuario # Se for papo genérico, busca o texto original
+    if termo_inteligente == "CONVERSA" or not termo_inteligente:
+        termo_inteligente = limpar_termo(texto_usuario)
 
     msg_aguarde = await context.bot.send_message(
         chat_id=chat_id, 
-        text=f"🧙‍♂️ *Merlim (IA) analisando seu pedido e garimpando:* `{termo_inteligente}`...", 
+        text=f"🧙‍♂️ *Merlim (IA) analisando e garimpando:* `{termo_inteligente}`...", 
         parse_mode="Markdown"
     )
     
@@ -171,32 +181,52 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 
     link_busca_geral = gerar_link_afiliado(f"https://lista.mercadolivre.com.br/{requests.utils.quote(termo_inteligente)}")
 
+    teclado = [
+        [InlineKeyboardButton("🔗 VER VITRINE COMPLETA NO SITE", url=link_busca_geral)],
+        [InlineKeyboardButton("🎟️ RESGATAR CUPONS", url=gerar_link_afiliado("https://www.mercadolivre.com.br/cupons"))]
+    ]
+
     if produtos:
         primeiro_produto = produtos[0]
         titulo = primeiro_produto.get("title")
         preco_atual = primeiro_produto.get("price", 0)
         
+        # Pega a foto real do Mercado Livre e converte para alta resolução trocando de I.jpg para O.jpg se necessário
+        foto_url = primeiro_produto.get("thumbnail", "")
+        if foto_url:
+            foto_url = foto_url.replace("-I.jpg", "-O.jpg")
+
         texto_oferta = (
-            f"🏆 **IA ENCONTROU AS MELHORES OPÇÕES!**\n\n"
-            f"🛒 Destaque para: *{titulo}*\n"
-            f"🟢 **Menor preço encontrado:** R$ {preco_atual:,.2f}\n\n"
-            f"📦 Veja todas as variações e ofertas completas na vitrine oficial abaixo:"
-        )
-    else:
-        texto_oferta = (
-            f"📦 **Catálogo Completo: {termo_inteligente.title()}**\n\n"
-            f"Olá, {nome_usuario}! Usei minha inteligência para buscar as melhores opções para o seu pedido no Mercado Livre.\n\n"
-            f"👇 *Clique no botão abaixo para ver a vitrine completa com segurança:*"
+            f"🏆 **IA ENCONTROU A MELHOR OFERTA!**\n\n"
+            f"🛒 *{titulo}*\n"
+            f"🟢 **Menor preço:** R$ {preco_atual:,.2f}\n\n"
+            f"👇 *Veja todas as opções na vitrine oficial:*"
         )
 
-    teclado = [
-        [InlineKeyboardButton("🔗 VER VITRINE COMPLETA NO SITE", url=link_busca_geral)],
-        [InlineKeyboardButton("🎟️ RESGATAR CUPONS", url=gerar_link_afiliado("https://www.mercadolivre.com.br/cupons"))]
-    ]
+        # Se encontrou a foto, manda como foto com a legenda do produto
+        if foto_url:
+            try:
+                await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=foto_url,
+                    caption=texto_oferta,
+                    reply_markup=InlineKeyboardMarkup(teclado),
+                    parse_mode="Markdown"
+                )
+                return
+            except Exception:
+                pass # Se der falha ao carregar a foto do ML, cai para o envio de texto abaixo
+
+    # Mensagem de fallback caso não venha foto ou dê erro
+    texto_catalogo = (
+        f"📦 **Catálogo Completo: {termo_inteligente.title()}**\n\n"
+        f"Olá, {nome_usuario}! Usei minha inteligência para buscar as melhores opções no Mercado Livre.\n\n"
+        f"👇 *Clique no botão abaixo para ver a vitrine completa com segurança:*"
+    )
     
     await context.bot.send_message(
         chat_id=chat_id, 
-        text=texto_oferta, 
+        text=texto_catalogo, 
         reply_markup=InlineKeyboardMarkup(teclado), 
         parse_mode="Markdown"
     )
@@ -205,7 +235,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 # MAIN
 # =========================
 def main():
-    print("🧙‍♂️ Iniciando o Merlim com Inteligência Artificial...", flush=True)
+    print("🧙‍♂️ Iniciando o Merlim com IA e Fotos do Mercado Livre...", flush=True)
     request = HTTPXRequest(connection_pool_size=20, connect_timeout=60, read_timeout=60)
     app = Application.builder().token(TOKEN).request(request).build()
 
@@ -213,7 +243,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_texto_livre))
 
-    print("✅ Merlim com IA ativado e pronto!", flush=True)
+    print("✅ Merlim 100% operacional com fotos e IA!", flush=True)
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
