@@ -36,21 +36,21 @@ def gerar_link_afiliado(url_produto):
     return f"{url_produto}{separador}matt_tool={AFFILIATE_ID}"
 
 # =========================
-# BUSCA O PREÇO MAIS BAIXO NO MERCADO LIVRE
+# BUSCA DE PRODUTOS OU LISTA NO MERCADO LIVRE
 # =========================
-def buscar_menor_preco(termo_busca):
+def buscar_produtos_mercadolivre(termo_busca):
     try:
-        # Ordenado por preço ascendente (sort=price_asc) para pegar SEMPRE o mais barato primeiro
-        url = f"https://api.mercadolibre.com/sites/MLB/search?q={requests.utils.quote(termo_busca)}&sort=price_asc&limit=1"
+        # Busca os produtos ordenados pelo menor preço
+        url = f"https://api.mercadolibre.com/sites/MLB/search?q={requests.utils.quote(termo_busca)}&sort=price_asc&limit=5"
         response = requests.get(url, timeout=10)
         
         if response.status_code == 200:
             resultados = response.json().get("results", [])
             if resultados:
-                return resultados[0] # Retorna o produto mais barato encontrado
+                return resultados # Retorna a lista de produtos encontrados
     except Exception as e:
         print(f"Erro na busca: {e}")
-    return None
+    return []
 
 # =========================
 # COMANDOS E INTERFACE DO TELEGRAM
@@ -85,7 +85,6 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     chat_id = update.effective_chat.id
     texto_usuario = update.message.text.strip()
 
-    # Atalhos rápidos do teclado inferior
     if texto_usuario == "🎟️ Resgatar Cupons":
         link_cupons = gerar_link_afiliado("https://www.mercadolivre.com.br/cupons")
         await update.message.reply_text(
@@ -96,14 +95,14 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     elif texto_usuario == "🔥 Ver Ofertas do Dia":
         texto_usuario = "ofertas imperdíveis"
 
-    # Passo 1: Capturar o nome do usuário se ainda não tiver
+    # Capturar o nome
     if "nome" not in context.user_data:
         context.user_data["nome"] = texto_usuario
         nome_usuario = context.user_data["nome"]
 
         await context.bot.send_message(
             chat_id=chat_id, 
-            text=f"✨ **Tudo pronto, {nome_usuario}!**\n\nAgora, **digite o nome de qualquer produto** que você está procurando (ex: *máquina de solda, tênis, celular, furadeira*):",
+            text=f"✨ **Tudo pronto, {nome_usuario}!**\n\nAgora, **digite o nome de qualquer produto** que você está procurando (ex: *máquina de solda, tênis, celular, notebook*):",
             reply_markup=ReplyKeyboardMarkup(
                 [[KeyboardButton("📱 Celular"), KeyboardButton("👟 Tênis"), KeyboardButton("💻 Notebook")],
                  [KeyboardButton("⚡ Ferramentas"), KeyboardButton("🔥 Ofertas do Dia")]],
@@ -113,7 +112,6 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
-    # Evitar mensagens duplicadas seguidas
     if context.user_data.get("ultima_mensagem") == texto_usuario:
         return
     context.user_data["ultima_mensagem"] = texto_usuario
@@ -123,45 +121,43 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 
     msg_aguarde = await context.bot.send_message(
         chat_id=chat_id, 
-        text=f"🔍 *Merlim garimpando o menor preço para:* `{texto_usuario}`...", 
+        text=f"🔍 *Merlim garimpando as melhores opções para:* `{texto_usuario}`...", 
         parse_mode="Markdown"
     )
     
-    # Faz a busca direto pelo termo que o cliente digitou (qualquer produto)
-    produto = buscar_menor_preco(texto_usuario)
+    produtos = buscar_produtos_mercadolivre(texto_usuario)
     
     try:
         await context.bot.delete_message(chat_id=chat_id, message_id=msg_aguarde.message_id)
     except:
         pass
 
-    if not produto:
-        link_busca_geral = gerar_link_afiliado(f"https://lista.mercadolivre.com.br/{requests.utils.quote(texto_usuario)}")
-        texto_fallback = (
-            f"📦 **Resultado para '{texto_usuario}', {nome_usuario}:**\n\n"
-            f"Não achei um item exato com estoque imediato para esse termo exato, mas você pode ver todas as opções no site oficial:"
+    link_busca_geral = gerar_link_afiliado(f"https://lista.mercadolivre.com.br/{requests.utils.quote(texto_usuario)}")
+
+    # Se a API retornou produtos, pegamos o primeiro para usar a foto e o menor preço reais de destaque!
+    if produtos:
+        primeiro_produto = produtos[0]
+        titulo = primeiro_produto.get("title")
+        preco_atual = primeiro_produto.get("price", 0)
+        thumbnail = primeiro_produto.get("thumbnail")
+        
+        texto_oferta = (
+            f"🏆 **ACHEI OPÇÕES PARA VOCÊ!**\n\n"
+            f"🛒 Exemplo em destaque: *{titulo}*\n"
+            f"🟢 **Menor preço encontrado:** R$ {preco_atual:,.2f}\n\n"
+            f"📦 Veja todas as variações e ofertas completas na vitrine oficial abaixo:"
         )
-        teclado_fallback = [[InlineKeyboardButton("🔗 VER OPÇÕES NO MERCADO LIVRE", url=link_busca_geral)]]
-        await context.bot.send_message(chat_id=chat_id, text=texto_fallback, reply_markup=InlineKeyboardMarkup(teclado_fallback), parse_mode="Markdown")
-        return
+    else:
+        # Fallback caso a API venha totalmente vazia
+        thumbnail = "https://images.unsplash.com/photo-1555529771-835f59fc5efe?auto=format&fit=crop&w=1000&q=80"
+        texto_oferta = (
+            f"📦 **Catálogo Completo: {texto_usuario.title()}**\n\n"
+            f"Olá, {nome_usuario}! Encontrei várias opções incríveis para essa busca no departamento oficial.\n\n"
+            f"👇 *Clique no botão abaixo para ver a vitrine completa com segurança:*"
+        )
 
-    # Monta os dados do produto mais barato encontrado na API
-    titulo = produto.get("title")
-    preco_atual = produto.get("price", 0)
-    link_original = produto.get("permalink")
-    thumbnail = produto.get("thumbnail")
-    
-    link_monetizado = gerar_link_afiliado(link_original)
-
-    texto_oferta = (
-        f"🏆 **ACHEI O MENOR PREÇO PARA VOCÊ!**\n\n"
-        f"🛒 **{titulo}**\n\n"
-        f"🟢 **Por apenas: R$ {preco_atual:,.2f}**\n\n"
-        f"⚡ *Menor valor localizado na base oficial do Mercado Livre com link verificado.*"
-    )
-    
     teclado = [
-        [InlineKeyboardButton("🔗 VER MENOR PREÇO NO SITE", url=link_monetizado)],
+        [InlineKeyboardButton("🔗 VER VITRINE COMPLETA NO SITE", url=link_busca_geral)],
         [InlineKeyboardButton("🎟️ RESGATAR CUPONS", url=gerar_link_afiliado("https://www.mercadolivre.com.br/cupons"))]
     ]
     
@@ -193,7 +189,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_texto_livre))
 
-    print("✅ Merlim configurado com busca universal de menor preço!", flush=True)
+    print("✅ Merlim configurado com sucesso!", flush=True)
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
