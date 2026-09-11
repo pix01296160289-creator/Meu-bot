@@ -127,7 +127,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     chat_id = update.effective_chat.id
     texto_usuario = update.message.text.strip()
 
-    # Tratamento para o botão de Vitrine que agora abre direto no link sem texto intermediário
+    # Tratamento para o botão da Vitrine
     if "Vitrine" in texto_usuario:
         teclado_inline_vitrine = [[InlineKeyboardButton("✨ ABRIR MINHA VITRINE OFICIAL AGORA", url=LINK_VITRINE_SOCIAL)]]
         await update.message.reply_text(
@@ -136,14 +136,13 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
             parse_mode="Markdown"
         )
         return
-    elif "Ofertas" in texto_usuario:
-        texto_usuario = "ofertas imperdíveis"
 
     # Captura o nome se ainda não estiver definido
     if "nome" not in context.user_data:
         nome_limpo = limpar_termo(texto_usuario)
-        if len(nome_limpo) < 2 or "Ofertas" in texto_usuario or "Vitrine" in texto_usuario:
-            await update.message.reply_text("⚠️ Por favor, digite um nome ou apelido válido:")
+        # Se clicar em algum botão antes de digitar o nome, avisa educadamente
+        if len(nome_limpo) < 2 or "Ofertas" in texto_usuario or "Vitrine" in texto_usuario or "Celular" in texto_usuario or "Tênis" in texto_usuario or "Notebook" in texto_usuario or "Ferramentas" in texto_usuario:
+            await update.message.reply_text("⚠️ Por favor, digite o seu nome ou apelido primeiro para continuarmos:")
             return
         
         context.user_data["nome"] = nome_limpo
@@ -151,7 +150,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 
         await context.bot.send_message(
             chat_id=chat_id, 
-            text=f"✨ **Tudo pronto, {nome_usuario}!**\n\nAgora você pode conversar comigo naturalmente. **O que você está procurando hoje?** (ex: *quero um tênis esportivo, celular barato, etc*):",
+            text=f"✨ **Tudo pronto, {nome_usuario}!**\n\nAgora você pode conversar comigo naturalmente ou usar os botões abaixo. **O que você está procurando hoje?**:",
             reply_markup=ReplyKeyboardMarkup(
                 [[KeyboardButton("📱 Celular"), KeyboardButton("👟 Tênis"), KeyboardButton("💻 Notebook")],
                  [KeyboardButton("⚡ Ferramentas"), KeyboardButton("✨ Minha Vitrine de Ofertas")]],
@@ -160,6 +159,18 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
             parse_mode="Markdown"
         )
         return
+
+    # Atalhos rápidos dos botões do menu
+    if "Celular" in texto_usuario:
+        texto_usuario = "celular"
+    elif "Tênis" in texto_usuario:
+        texto_usuario = "tenis"
+    elif "Notebook" in texto_usuario:
+        texto_usuario = "notebook"
+    elif "Ferramentas" in texto_usuario:
+        texto_usuario = "ferramentas"
+    elif "Ofertas" in texto_usuario:
+        texto_usuario = "ofertas imperdíveis"
 
     nome_usuario = context.user_data.get("nome", "Cliente")
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
@@ -172,7 +183,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     msg_aguarde = await context.bot.send_message(
         chat_id=chat_id, 
         text=f"🧙‍♂️ *Merlim (IA) analisando e garimpando:* `{termo_inteligente}`...", 
-        parse_Mode="Markdown"
+        parse_mode="Markdown"
     )
     
     produtos = buscar_produtos_mercadolivre(termo_inteligente)
@@ -235,7 +246,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 # MAIN
 # =========================
 def main():
-    print("🧙‍♂️ Iniciando o Merlim com Botões de Acesso Direto...", flush=True)
+    print("🧙‍♂️ Iniciando o Merlim com Atalhos de Botões 100% Funcionais...", flush=True)
     request = HTTPXRequest(connection_pool_size=20, connect_timeout=60, read_timeout=60)
     app = Application.builder().token(TOKEN).request(request).build()
 
@@ -243,7 +254,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_texto_livre))
 
-    print("✅ Merlim 100% operacional com links diretos!", flush=True)
+    print("✅ Merlim 100% operacional!", flush=True)
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
