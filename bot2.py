@@ -127,10 +127,12 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     chat_id = update.effective_chat.id
     texto_usuario = update.message.text.strip()
 
-    # Tratamento para os botões fixos do menu
+    # Tratamento para o botão de Vitrine que agora abre direto no link sem texto intermediário
     if "Vitrine" in texto_usuario:
+        teclado_inline_vitrine = [[InlineKeyboardButton("✨ ABRIR MINHA VITRINE OFICIAL AGORA", url=LINK_VITRINE_SOCIAL)]]
         await update.message.reply_text(
-            f"✨ **Vitrine Exclusiva do Merlim**\n\nAcesse o link abaixo para conferir a seleção especial de ofertas na minha página oficial:\n\n{LINK_VITRINE_SOCIAL}",
+            "🛍️ **Vitrine Exclusiva do Merlim**\n\nClique no botão abaixo para acessar a página de ofertas:",
+            reply_markup=InlineKeyboardMarkup(teclado_inline_vitrine),
             parse_mode="Markdown"
         )
         return
@@ -170,7 +172,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     msg_aguarde = await context.bot.send_message(
         chat_id=chat_id, 
         text=f"🧙‍♂️ *Merlim (IA) analisando e garimpando:* `{termo_inteligente}`...", 
-        parse_mode="Markdown"
+        parse_Mode="Markdown"
     )
     
     produtos = buscar_produtos_mercadolivre(termo_inteligente)
@@ -233,7 +235,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 # MAIN
 # =========================
 def main():
-    print("🧙‍♂️ Iniciando o Merlim com Vitrine Social Integrada...", flush=True)
+    print("🧙‍♂️ Iniciando o Merlim com Botões de Acesso Direto...", flush=True)
     request = HTTPXRequest(connection_pool_size=20, connect_timeout=60, read_timeout=60)
     app = Application.builder().token(TOKEN).request(request).build()
 
@@ -241,7 +243,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_texto_livre))
 
-    print("✅ Merlim 100% operacional com a Vitrine Social!", flush=True)
+    print("✅ Merlim 100% operacional com links diretos!", flush=True)
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
