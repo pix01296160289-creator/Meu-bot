@@ -1,6 +1,7 @@
 import os
 import sys
 import re
+import asyncio
 from dotenv import load_dotenv
 import requests
 from groq import Groq
@@ -40,12 +41,11 @@ def gerar_link_afiliado(url_produto):
     return f"{url_produto}{separador}matt_tool={AFFILIATE_ID}"
 
 # =========================
-# LIMPEZA DE TEXTO (REMOVE EMOJIS)
+# LIMPEZA DE TEXTO
 # =========================
 def limpar_termo(texto):
     # Remove emojis e caracteres especiais para a busca não falhar
     texto_limpo = re.sub(r'[^\w\s]', '', texto)
-    # Remove espaços extras
     return ' '.join(texto_limpo.split()).strip()
 
 # =========================
@@ -56,7 +56,7 @@ def interpretar_com_ia(texto_usuario):
     prompt_sistema = (
         "Você é o Merlim, um assistente de inteligência artificial especialista em e-commerce e caça a ofertas no Mercado Livre. "
         "O usuário vai digitar algo para você. Sua tarefa é analisar o texto e extrair APENAS o nome limpo do produto ou termo principal "
-        "que ele deseja buscar (ex: se ele disse 'preciso de uma parafusadeira boa', você retorna apenas 'parafusadeira'). "
+        "que ele deseja buscar (ex: se ele disser 'preciso de uma parafusadeira boa', você retorna apenas 'parafusadeira'). "
         "Se o usuário disser 'oi', 'olá', 'bom dia' ou outra saudação sem pedir produto, responda apenas 'CONVERSA'."
     )
     try:
@@ -74,7 +74,6 @@ def interpretar_com_ia(texto_usuario):
         return limpar_termo(resposta)
     except Exception as e:
         print(f"Erro na API da Groq: {e}")
-        # Fallback: se a IA falhar, limpa o texto original do usuário
         return limpar_termo(texto_usuario)
 
 # =========================
@@ -101,7 +100,7 @@ def buscar_produtos_mercadolivre(termo_busca):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     
-    # --- AQUI ESTÁ A SUA IMAGEM PERSONALIZADA ---
+    # Link direto da sua imagem personalizada
     banner_url = "https://i.ibb.co/pr5XpyL8/image-1789089291368.jpg"
     
     legenda_boas_vindas = (
@@ -116,14 +115,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        await update.message.reply_photo(
-            photo=banner_url, 
+        # *** MUDANÇA AQUI ***
+        # Usamos reply_document para enviar a imagem sem compressão e mantê-la nítida.
+        await update.message.reply_document(
+            document=banner_url, 
             caption=legenda_boas_vindas, 
             reply_markup=teclado_menu, 
             parse_mode="Markdown"
         )
     except Exception:
-        # Fallback caso a foto dê erro, envia só o texto
+        # Fallback caso o envio como documento dê erro
         await update.message.reply_text(legenda_boas_vindas, reply_markup=teclado_menu, parse_mode="Markdown")
 
 async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -202,10 +203,10 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         titulo = primeiro_produto.get("title")
         preco_atual = primeiro_produto.get("price", 0)
         
-        # Pega a foto real do Mercado Livre e converte para alta resolução trocando de I.jpg para O.jpg
+        # Pega a foto real do Mercado Livre e converte para alta resolução
         foto_url = primeiro_produto.get("thumbnail", "")
         if foto_url:
-            foto_url = foto_url.replace("-I.jpg", "-O.jpg") # Tenta obter a imagem maior
+            foto_url = foto_url.replace("-I.jpg", "-O.jpg")
 
         texto_oferta = (
             f"🏆 **IA ENCONTROU A MELHOR OFERTA!**\n\n"
@@ -226,8 +227,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
                 )
                 return
             except Exception:
-                print("❌ Erro ao enviar foto do ML, enviando texto.")
-                pass # Se der falha ao carregar a foto do ML, cai para o envio de texto abaixo
+                pass # Se der falha ao carregar a foto, cai para o envio de texto abaixo
 
     # Mensagem de fallback caso não venha foto ou dê erro
     texto_catalogo = (
@@ -247,9 +247,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 # MAIN
 # =========================
 def main():
-    print("🧙‍♂️ Iniciando o Merlim com IA, Fotos do ML e Banner Personalizado...", flush=True)
-    
-    # Configuração de timeout para evitar travamentos
+    print("🧙‍♂️ Iniciando o Merlim com IA, Fotos do ML e Banner em Alta Qualidade...", flush=True)
     request = HTTPXRequest(connection_pool_size=20, connect_timeout=60, read_timeout=60)
     app = Application.builder().token(TOKEN).request(request).build()
 
