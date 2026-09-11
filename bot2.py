@@ -1,7 +1,6 @@
 import os
 import sys
 import re
-import asyncio
 from dotenv import load_dotenv
 import requests
 from groq import Groq
@@ -32,7 +31,7 @@ async def erro_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     print(f"❌ ERRO CAPTURADO NO BOT: {context.error}", flush=True)
 
 # =========================
-# GERADOR DE LINK COM COMISSÃO AUTOMÁTICA
+# GERADOR DE LINK COM COMISSÃO
 # =========================
 def gerar_link_afiliado(url_produto):
     if not AFFILIATE_ID:
@@ -41,10 +40,12 @@ def gerar_link_afiliado(url_produto):
     return f"{url_produto}{separador}matt_tool={AFFILIATE_ID}"
 
 # =========================
-# LIMPEZA DE TEXTO
+# LIMPEZA DE TEXTO (REMOVE EMOJIS)
 # =========================
 def limpar_termo(texto):
+    # Remove emojis e caracteres especiais para a busca não falhar
     texto_limpo = re.sub(r'[^\w\s]', '', texto)
+    # Remove espaços extras
     return ' '.join(texto_limpo.split()).strip()
 
 # =========================
@@ -55,8 +56,8 @@ def interpretar_com_ia(texto_usuario):
     prompt_sistema = (
         "Você é o Merlim, um assistente de inteligência artificial especialista em e-commerce e caça a ofertas no Mercado Livre. "
         "O usuário vai digitar algo para você. Sua tarefa é analisar o texto e extrair APENAS o nome limpo do produto ou termo principal "
-        "que ele deseja buscar (ex: se ele disser 'preciso de uma parafusadeira boa', você retorna apenas 'parafusadeira'). "
-        "Se for uma saudação ou conversa fiada sem produto, responda apenas 'CONVERSA'."
+        "que ele deseja buscar (ex: se ele disse 'preciso de uma parafusadeira boa', você retorna apenas 'parafusadeira'). "
+        "Se o usuário disser 'oi', 'olá', 'bom dia' ou outra saudação sem pedir produto, responda apenas 'CONVERSA'."
     )
     try:
         chat_completion = client_groq.chat.completions.create(
@@ -69,9 +70,11 @@ def interpretar_com_ia(texto_usuario):
             max_tokens=50
         )
         resposta = chat_completion.choices[0].message.content.strip()
+        # Retorna a resposta da IA já limpa de emojis
         return limpar_termo(resposta)
     except Exception as e:
         print(f"Erro na API da Groq: {e}")
+        # Fallback: se a IA falhar, limpa o texto original do usuário
         return limpar_termo(texto_usuario)
 
 # =========================
@@ -98,11 +101,12 @@ def buscar_produtos_mercadolivre(termo_busca):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     
-    banner_url = "https://images.unsplash.com/photo-1607532945533-2de48af48cff?auto=format&fit=crop&w=1000&q=80"
+    # --- AQUI ESTÁ A SUA IMAGEM PERSONALIZADA ---
+    banner_url = "https://i.ibb.co/pr5XpyL8/image-1789089291368.jpg"
     
     legenda_boas_vindas = (
         "🧙‍♂️ **MERLIM DAS OFERTAS** | *Seu Assistente Inteligente*\n\n"
-        "Seja muito bem-vindo! Agora sou impulsionado por Inteligência Artificial e trago as fotos reais dos produtos do Mercado Livre para você.\n\n"
+        "Seja muito bem-vindo! Agora sou impulsionado por Inteligência Artificial e trago as melhores ofertas do Mercado Livre para você.\n\n"
         "👉 **Para começarmos, digite o seu nome ou apelido abaixo:**"
     )
 
@@ -119,6 +123,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
     except Exception:
+        # Fallback caso a foto dê erro, envia só o texto
         await update.message.reply_text(legenda_boas_vindas, reply_markup=teclado_menu, parse_mode="Markdown")
 
 async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -163,6 +168,8 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 
     # IA interpreta e limpa o pedido do usuário
     termo_inteligente = interpretar_com_ia(texto_usuario)
+    
+    # Se a IA não encontrar produto, trata como busca normal limpa
     if termo_inteligente == "CONVERSA" or not termo_inteligente:
         termo_inteligente = limpar_termo(texto_usuario)
 
@@ -172,13 +179,16 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         parse_mode="Markdown"
     )
     
+    # Busca produtos no ML
     produtos = buscar_produtos_mercadolivre(termo_inteligente)
     
+    # Apaga a mensagem de "aguarde"
     try:
         await context.bot.delete_message(chat_id=chat_id, message_id=msg_aguarde.message_id)
     except Exception:
         pass
 
+    # Link base para busca geral
     link_busca_geral = gerar_link_afiliado(f"https://lista.mercadolivre.com.br/{requests.utils.quote(termo_inteligente)}")
 
     teclado = [
@@ -186,15 +196,16 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         [InlineKeyboardButton("🎟️ RESGATAR CUPONS", url=gerar_link_afiliado("https://www.mercadolivre.com.br/cupons"))]
     ]
 
+    # Se encontrou produtos, mostra o melhor destaque com foto
     if produtos:
         primeiro_produto = produtos[0]
         titulo = primeiro_produto.get("title")
         preco_atual = primeiro_produto.get("price", 0)
         
-        # Pega a foto real do Mercado Livre e converte para alta resolução trocando de I.jpg para O.jpg se necessário
+        # Pega a foto real do Mercado Livre e converte para alta resolução trocando de I.jpg para O.jpg
         foto_url = primeiro_produto.get("thumbnail", "")
         if foto_url:
-            foto_url = foto_url.replace("-I.jpg", "-O.jpg")
+            foto_url = foto_url.replace("-I.jpg", "-O.jpg") # Tenta obter a imagem maior
 
         texto_oferta = (
             f"🏆 **IA ENCONTROU A MELHOR OFERTA!**\n\n"
@@ -215,6 +226,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
                 )
                 return
             except Exception:
+                print("❌ Erro ao enviar foto do ML, enviando texto.")
                 pass # Se der falha ao carregar a foto do ML, cai para o envio de texto abaixo
 
     # Mensagem de fallback caso não venha foto ou dê erro
@@ -235,7 +247,9 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 # MAIN
 # =========================
 def main():
-    print("🧙‍♂️ Iniciando o Merlim com IA e Fotos do Mercado Livre...", flush=True)
+    print("🧙‍♂️ Iniciando o Merlim com IA, Fotos do ML e Banner Personalizado...", flush=True)
+    
+    # Configuração de timeout para evitar travamentos
     request = HTTPXRequest(connection_pool_size=20, connect_timeout=60, read_timeout=60)
     app = Application.builder().token(TOKEN).request(request).build()
 
@@ -243,7 +257,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_texto_livre))
 
-    print("✅ Merlim 100% operacional com fotos e IA!", flush=True)
+    print("✅ Merlim 100% operacional!", flush=True)
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
