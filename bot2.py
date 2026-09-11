@@ -18,6 +18,9 @@ TOKEN = os.getenv("TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 AFFILIATE_ID = os.getenv("AFFILIATE_ID", "")
 
+# Link da sua Vitrine Social oficial do Mercado Livre
+LINK_VITRINE_SOCIAL = "https://www.mercadolivre.com.br/social/fe20250121204050?matt_word=fe20250121204050&matt_tool=72221096&forceInApp=true&ref=BOjxjRP0JfIdxgeD6HICroH6V3KT5oSzPmxPAfx%2FcXkUiqE9JAgL38r3CvjMjfk6qEKST%2BPRODeLqjdF%2F%2Bp2o670f%2BFkU7UrCz8YgPkWed1zCp7rXiUzZ0AvRD3Fh%2Fpp0d9Xaz%2BB7ghvvzVHs7bpuv4MAymDzj3m0y%2FsTYbrixIXDIxivYq2u%2FAG36FmjHPBX9AEjNsZ0q8mRMXLUiti3LORlQnP9PIIj2ETFoUB2q0%3D#origin=whatsapp"
+
 if not TOKEN or not GROQ_API_KEY:
     print("❌ ERRO: Verifique suas chaves TOKEN e GROQ_API_KEY no arquivo .env ou no Railway", flush=True)
     sys.exit(1)
@@ -44,7 +47,6 @@ def gerar_link_afiliado(url_produto):
 # LIMPEZA DE TEXTO
 # =========================
 def limpar_termo(texto):
-    # Remove emojis e caracteres especiais para a busca não falhar
     texto_limpo = re.sub(r'[^\w\s]', '', texto)
     return ' '.join(texto_limpo.split()).strip()
 
@@ -52,7 +54,6 @@ def limpar_termo(texto):
 # INTELIGÊNCIA ARTIFICIAL (GROQ)
 # =========================
 def interpretar_com_ia(texto_usuario):
-    """Usa a IA da Groq para extrair o produto da busca ou gerar uma resposta amigável."""
     prompt_sistema = (
         "Você é o Merlim, um assistente de inteligência artificial especialista em e-commerce e caça a ofertas no Mercado Livre. "
         "O usuário vai digitar algo para você. Sua tarefa é analisar o texto e extrair APENAS o nome limpo do produto ou termo principal "
@@ -99,7 +100,6 @@ def buscar_produtos_mercadolivre(termo_busca):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     
-    # Link direto da imagem
     banner_url = "https://i.ibb.co/pr5XpyL8/image-1789089291368.jpg"
     
     legenda_boas_vindas = (
@@ -109,12 +109,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     teclado_menu = ReplyKeyboardMarkup(
-        [[KeyboardButton("🔥 Ver Ofertas do Dia"), KeyboardButton("🎟️ Resgatar Cupons")]],
+        [[KeyboardButton("🔥 Ver Ofertas do Dia"), KeyboardButton("✨ Minha Vitrine de Ofertas")]],
         resize_keyboard=True
     )
 
     try:
-        # Exibe a imagem de forma limpa e expandida no topo do chat
         await update.message.reply_photo(
             photo=banner_url, 
             caption=legenda_boas_vindas, 
@@ -128,11 +127,10 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     chat_id = update.effective_chat.id
     texto_usuario = update.message.text.strip()
 
-    # Tratamento para os botões fixos
-    if "Cupons" in texto_usuario:
-        link_cupons = gerar_link_afiliado("https://www.mercadolivre.com.br/cupons")
+    # Tratamento para os botões fixos do menu
+    if "Vitrine" in texto_usuario:
         await update.message.reply_text(
-            f"🎟️ **Central de Cupons do Mercado Livre**\n\nAcesse o link abaixo para resgatar seus descontos:\n\n{link_cupons}",
+            f"✨ **Vitrine Exclusiva do Merlim**\n\nAcesse o link abaixo para conferir a seleção especial de ofertas na minha página oficial:\n\n{LINK_VITRINE_SOCIAL}",
             parse_mode="Markdown"
         )
         return
@@ -142,7 +140,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     # Captura o nome se ainda não estiver definido
     if "nome" not in context.user_data:
         nome_limpo = limpar_termo(texto_usuario)
-        if len(nome_limpo) < 2 or "Ofertas" in texto_usuario or "Cupons" in texto_usuario:
+        if len(nome_limpo) < 2 or "Ofertas" in texto_usuario or "Vitrine" in texto_usuario:
             await update.message.reply_text("⚠️ Por favor, digite um nome ou apelido válido:")
             return
         
@@ -154,7 +152,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
             text=f"✨ **Tudo pronto, {nome_usuario}!**\n\nAgora você pode conversar comigo naturalmente. **O que você está procurando hoje?** (ex: *quero um tênis esportivo, celular barato, etc*):",
             reply_markup=ReplyKeyboardMarkup(
                 [[KeyboardButton("📱 Celular"), KeyboardButton("👟 Tênis"), KeyboardButton("💻 Notebook")],
-                 [KeyboardButton("⚡ Ferramentas"), KeyboardButton("🔥 Ofertas do Dia")]],
+                 [KeyboardButton("⚡ Ferramentas"), KeyboardButton("✨ Minha Vitrine de Ofertas")]],
                 resize_keyboard=True
             ),
             parse_mode="Markdown"
@@ -186,7 +184,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 
     teclado = [
         [InlineKeyboardButton("🔗 VER VITRINE COMPLETA NO SITE", url=link_busca_geral)],
-        [InlineKeyboardButton("🎟️ RESGATAR CUPONS", url=gerar_link_afiliado("https://www.mercadolivre.com.br/cupons"))]
+        [InlineKeyboardButton("✨ ACESSAR MINHA PÁGINA OFICIAL", url=LINK_VITRINE_SOCIAL)]
     ]
 
     if produtos:
@@ -235,7 +233,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 # MAIN
 # =========================
 def main():
-    print("🧙‍♂️ Iniciando o Merlim com IA e Banner Profissional...", flush=True)
+    print("🧙‍♂️ Iniciando o Merlim com Vitrine Social Integrada...", flush=True)
     request = HTTPXRequest(connection_pool_size=20, connect_timeout=60, read_timeout=60)
     app = Application.builder().token(TOKEN).request(request).build()
 
@@ -243,7 +241,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_texto_livre))
 
-    print("✅ Merlim 100% operacional!", flush=True)
+    print("✅ Merlim 100% operacional com a Vitrine Social!", flush=True)
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
