@@ -16,10 +16,10 @@ print("🔄 Carregando variáveis de ambiente...", flush=True)
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-AFFILIATE_ID = os.getenv("AFFILIATE_ID", "")
+AFFILIATE_ID = "fe20250121204050"
 
 # Link da sua Vitrine Social oficial do Mercado Livre
-LINK_VITRINE_SOCIAL = "https://www.mercadolivre.com.br/social/fe20250121204050?matt_word=fe20250121204050&matt_tool=72221096&forceInApp=true&ref=BOjxjRP0JfIdxgeD6HICroH6V3KT5oSzPmxPAfx%2FcXkUiqE9JAgL38r3CvjMjfk6qEKST%2BPRODeLqjdF%2F%2Bp2o670f%2BFkU7UrCz8YgPkWed1zCp7rXiUzZ0AvRD3Fh%2Fpp0d9Xaz%2BB7ghvvzVHs7bpuv4MAymDzj3m0y%2FsTYbrixIXDIxivYq2u%2FAG36FmjHPBX9AEjNsZ0q8mRMXLUiti3LORlQnP9PIIj2ETFoUB2q0%3D#origin=whatsapp"
+LINK_VITRINE_SOCIAL = "https://www.mercadolivre.com.br/social/boletandoofertas?matt_word=diogenes&matt_tool=fe20250121204050&forceInApp=true&ref=BAFmMTXO%2BxWa3NkkmM5w2bxYG1TSxTTbK5V8JaMwh3kwo6xtphbzD16CmPon1AVWSRl0d%2B4xSl8Z5YfGJqCekVhZrEiwhhn0q6lO2AyXaHFG5Y57oWKdQ%2FUi53SzE9J%2BzpO51RD9i0MrBMwG%2FMhmXijlhrZ3MIS%2BPucSDNcbhqhx%2F5AWZfZ9M%2FRwkMz9it%2FfQX3%2FK%2BzOTqdJqKHfcg%3D%3D"
 
 if not TOKEN or not GROQ_API_KEY:
     print("❌ ERRO: Verifique suas chaves TOKEN e GROQ_API_KEY no arquivo .env ou no Railway", flush=True)
@@ -40,8 +40,10 @@ async def erro_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 def gerar_link_afiliado(url_produto):
     if not AFFILIATE_ID:
         return url_produto
-    separador = "&" if "?" in url_produto else "?"
-    return f"{url_produto}{separador}matt_tool={AFFILIATE_ID}"
+    # Remove parâmetros matt_tool antigos se houver para evitar conflito
+    url_limpa = re.sub(r'([?&])matt_tool=[^&]+', '', url_produto)
+    separador = "&" if "?" in url_limpa else "?"
+    return f"{url_limpa}{separador}matt_tool={AFFILIATE_ID}"
 
 # =========================
 # LIMPEZA DE TEXTO
@@ -49,6 +51,33 @@ def gerar_link_afiliado(url_produto):
 def limpar_termo(texto):
     texto_limpo = re.sub(r'[^\w\s]', '', texto)
     return ' '.join(texto_limpo.split()).strip()
+
+# =========================
+# EXTRAIR ITEM ID DE UM LINK DO MERCADO LIVRE
+# =========================
+def extrair_item_id_do_link(url):
+    # Procura por padrões como MLB-123456789 ou MLB123456789 na URL
+    match = re.search(r'MLB-?(\d+)', url)
+    if match:
+        return f"MLB{match.group(1)}"
+    return None
+
+# =========================
+# BUSCAR DETALHES DO PRODUTO PELA API DO ML VIA LINK
+# =========================
+def buscar_produto_por_link(url_produto):
+    item_id = extrair_item_id_do_link(url_produto)
+    if not item_id:
+        return None
+    try:
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        url = f"https://api.mercadolibre.com/items/{item_id}"
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            return response.json()
+    except Exception as e:
+        print(f"Erro ao buscar produto por ID na API ML: {e}")
+    return None
 
 # =========================
 # INTELIGÊNCIA ARTIFICIAL (GROQ)
@@ -127,11 +156,16 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     chat_id = update.effective_chat.id
     texto_usuario = update.message.text.strip()
 
-    # Tratamento para o botão da Vitrine
+    # Tratamento para o botão da Vitrine Social
     if "Vitrine" in texto_usuario:
-        teclado_inline_vitrine = [[InlineKeyboardButton("✨ ABRIR MINHA VITRINE OFICIAL AGORA", url=LINK_VITRINE_SOCIAL)]]
+        teclado_inline_vitrine = [
+            [InlineKeyboardButton("✨ ACESSAR VITRINE COMPLETA NO SITE", url=LINK_VITRINE_SOCIAL)],
+            [InlineKeyboardButton("🔥 VER PRODUTOS EM DESTAQUE", url=LINK_VITRINE_SOCIAL)]
+        ]
         await update.message.reply_text(
-            "🛍️ **Vitrine Exclusiva do Merlim**\n\nClique no botão abaixo para acessar a página de ofertas:",
+            "🛍️ **Vitrine Exclusiva do Merlim**\n\n"
+            "Tire proveito de todas as ofertas selecionadas na minha página oficial. "
+            "Clique no botão abaixo para abrir a vitrine completa:",
             reply_markup=InlineKeyboardMarkup(teclado_inline_vitrine),
             parse_mode="Markdown"
         )
@@ -140,7 +174,6 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     # Captura o nome se ainda não estiver definido
     if "nome" not in context.user_data:
         nome_limpo = limpar_termo(texto_usuario)
-        # Se clicar em algum botão antes de digitar o nome, avisa educadamente
         if len(nome_limpo) < 2 or "Ofertas" in texto_usuario or "Vitrine" in texto_usuario or "Celular" in texto_usuario or "Tênis" in texto_usuario or "Notebook" in texto_usuario or "Ferramentas" in texto_usuario:
             await update.message.reply_text("⚠️ Por favor, digite o seu nome ou apelido primeiro para continuarmos:")
             return
@@ -150,12 +183,64 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 
         await context.bot.send_message(
             chat_id=chat_id, 
-            text=f"✨ **Tudo pronto, {nome_usuario}!**\n\nAgora você pode conversar comigo naturalmente ou usar os botões abaixo. **O que você está procurando hoje?**:",
+            text=f"✨ **Tudo pronto, {nome_usuario}!**\n\nAgora você pode conversar comigo, usar os botões ou **enviar qualquer link de produto do Mercado Livre** para gerar o card com o seu código de afiliado!\n\n**O que você deseja fazer?**:",
             reply_markup=ReplyKeyboardMarkup(
                 [[KeyboardButton("📱 Celular"), KeyboardButton("👟 Tênis"), KeyboardButton("💻 Notebook")],
                  [KeyboardButton("⚡ Ferramentas"), KeyboardButton("✨ Minha Vitrine de Ofertas")]],
                 resize_keyboard=True
             ),
+            parse_mode="Markdown"
+        )
+        return
+
+    # SE O USUÁRIO MANDAR UM LINK DO MERCADO LIVRE
+    if "mercadolivre.com" in texto_usuario or "mercadolivre.com.br" in texto_usuario or "ml.com" in texto_usuario:
+        msg_aguarde = await context.bot.send_message(chat_id=chat_id, text="🧙‍♂️ *Merlim transformando seu link em card de afiliado...*", parse_mode="Markdown")
+        
+        dados_prod = buscar_produto_por_link(texto_usuario)
+        link_afiliado_pronto = gerar_link_afiliado(texto_usuario)
+        
+        titulo_card = "Produto Selecionado no Mercado Livre"
+        foto_card = ""
+        
+        if dados_prod:
+            titulo_card = dados_prod.get("title", titulo_card)
+            pics = dados_prod.get("pictures", [])
+            if pics:
+                foto_card = pics[0].get("secure_url", pics[0].get("url", ""))
+        
+        legenda_card = (
+            f"*{titulo_card}*\n\n"
+            f"Visite a página e encontre todos os produtos de {AFFILIATE_ID} em um só lugar."
+        )
+        
+        teclado_card = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔗 Ver Produto e Ofertas", url=link_afiliado_pronto)]
+        ])
+
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=msg_aguarde.message_id)
+        except Exception:
+            pass
+
+        if foto_card:
+            try:
+                await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=foto_card,
+                    caption=legenda_card,
+                    reply_markup=teclado_card,
+                    parse_mode="Markdown"
+                )
+                return
+            except Exception:
+                pass
+        
+        # Caso não consiga a foto, envia em texto com o botão
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=legenda_card,
+            reply_markup=teclado_card,
             parse_mode="Markdown"
         )
         return
@@ -193,11 +278,9 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     except Exception:
         pass
 
-    link_busca_geral = gerar_link_afiliado(f"https://lista.mercadolivre.com.br/{requests.utils.quote(termo_inteligente)}")
-
     teclado = [
-        [InlineKeyboardButton("🔗 VER VITRINE COMPLETA NO SITE", url=link_busca_geral)],
-        [InlineKeyboardButton("✨ ACESSAR MINHA PÁGINA OFICIAL", url=LINK_VITRINE_SOCIAL)]
+        [InlineKeyboardButton("🔗 VER BUSCA NA LISTA GERAL", url=gerar_link_afiliado(f"https://lista.mercadolivre.com.br/{requests.utils.quote(termo_inteligente)}"))],
+        [InlineKeyboardButton("✨ EXPLORAR MINHA VITRINE SOCIAL", url=LINK_VITRINE_SOCIAL)]
     ]
 
     if produtos:
@@ -213,7 +296,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
             f"🏆 **IA ENCONTROU A MELHOR OFERTA!**\n\n"
             f"🛒 *{titulo}*\n"
             f"🟢 **Menor preço:** R$ {preco_atual:,.2f}\n\n"
-            f"👇 *Veja todas as opções na vitrine oficial:*"
+            f"Visite a página e encontre todos os produtos de {AFFILIATE_ID} em um só lugar."
         )
 
         if foto_url:
@@ -232,7 +315,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     texto_catalogo = (
         f"📦 **Catálogo Completo: {termo_inteligente.title()}**\n\n"
         f"Olá, {nome_usuario}! Usei minha inteligência para buscar as melhores opções no Mercado Livre.\n\n"
-        f"👇 *Clique no botão abaixo para ver a vitrine completa com segurança:*"
+        f"Visite a página e encontre todos os produtos de {AFFILIATE_ID} em um só lugar."
     )
     
     await context.bot.send_message(
@@ -246,7 +329,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 # MAIN
 # =========================
 def main():
-    print("🧙‍♂️ Iniciando o Merlim com Atalhos de Botões 100% Funcionais...", flush=True)
+    print("🧙‍♂️ Iniciando o Merlim com Conversor de Links e Vitrine Social...", flush=True)
     request = HTTPXRequest(connection_pool_size=20, connect_timeout=60, read_timeout=60)
     app = Application.builder().token(TOKEN).request(request).build()
 
