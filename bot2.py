@@ -18,7 +18,7 @@ TOKEN = os.getenv("TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 AFFILIATE_ID = "fe20250121204050"
 
-# Link oficial da sua Vitrine Social fornecido por você
+# Link oficial da sua Vitrine Social
 LINK_VITRINE_SOCIAL = "https://www.mercadolivre.com.br/social/fe20250121204050?matt_word=fe20250121204050&matt_tool=72221096&forceInApp=true&ref=BCHCIAky81FsdxQcfbha%2BxMSne6JjpPAkNIDQyptcnf%2BMvfa04OUixCLqRcuFbYvVdd830SIgt7tPGzIzEwcK1t2RUFPtJp2Z6NIsiltU3EhyHO2oBorwOkw0cievtRZijNuMRQADZwieK8as%2F2GHDB2F1l9EuWKBhXJjTNnJYMRClM7y4PxPtJN03wKYNGnzRWjVLfVGaPHSSVvaVjLuh9fRn2eZULxaqINKZfR24VLgZbK#origin=whatsapp"
 
 if not TOKEN or not GROQ_API_KEY:
@@ -136,7 +136,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     teclado_menu = ReplyKeyboardMarkup(
-        [[KeyboardButton("🔥 Ver Ofertas do Dia"), KeyboardButton("✨ Minha Vitrine de Ofertas")]],
+        [[KeyboardButton("🔥 Ver Ofertas do Dia"), KeyboardButton("✨ Parafusadeira em oferta")]],
         resize_keyboard=True
     )
 
@@ -154,14 +154,14 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     chat_id = update.effective_chat.id
     texto_usuario = update.message.text.strip()
 
-    # Tratamento para o botão da Vitrine Social
-    if "Vitrine" in texto_usuario:
+    # Tratamento para o botão da Parafusadeira em oferta
+    if "Parafusadeira" in texto_usuario or "oferta" in texto_usuario:
         teclado_inline_vitrine = [
             [InlineKeyboardButton("✨ ACESSAR VITRINE COMPLETA NO SITE", url=LINK_VITRINE_SOCIAL)],
             [InlineKeyboardButton("🔥 VER PRODUTOS EM DESTAQUE", url=LINK_VITRINE_SOCIAL)]
         ]
         await update.message.reply_text(
-            "🛍️ **Vitrine Exclusiva do Merlim**\n\n"
+            "🛍️ **Parafusadeira em oferta**\n\n"
             "Tire proveito de todas as ofertas selecionadas na minha página oficial. "
             "Clique no botão abaixo para abrir a vitrine completa:",
             reply_markup=InlineKeyboardMarkup(teclado_inline_vitrine),
@@ -172,7 +172,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     # Captura o nome se ainda não estiver definido
     if "nome" not in context.user_data:
         nome_limpo = limpar_termo(texto_usuario)
-        if len(nome_limpo) < 2 or "Ofertas" in texto_usuario or "Vitrine" in texto_usuario or "Celular" in texto_usuario or "Tênis" in texto_usuario or "Notebook" in texto_usuario or "Ferramentas" in texto_usuario:
+        if len(nome_limpo) < 2 or "Ofertas" in texto_usuario or "Celular" in texto_usuario or "Tênis" in texto_usuario or "Notebook" in texto_usuario or "Ferramentas" in texto_usuario:
             await update.message.reply_text("⚠️ Por favor, digite o seu nome ou apelido primeiro para continuarmos:")
             return
         
@@ -184,7 +184,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
             text=f"✨ **Tudo pronto, {nome_usuario}!**\n\nAgora você pode conversar comigo, usar os botões ou **enviar qualquer link de produto do Mercado Livre** para gerar o card com o seu código de afiliado!\n\n**O que você deseja fazer?**:",
             reply_markup=ReplyKeyboardMarkup(
                 [[KeyboardButton("📱 Celular"), KeyboardButton("👟 Tênis"), KeyboardButton("💻 Notebook")],
-                 [KeyboardButton("⚡ Ferramentas"), KeyboardButton("✨ Minha Vitrine de Ofertas")]],
+                 [KeyboardButton("⚡ Ferramentas"), KeyboardButton("✨ Parafusadeira em oferta")]],
                 resize_keyboard=True
             ),
             parse_mode="Markdown"
@@ -198,7 +198,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         dados_prod = buscar_produto_por_link(texto_usuario)
         link_afiliado_pronto = gerar_link_afiliado(texto_usuario)
         
-        titulo_card = "Parafusadeira Furadeira em Promoção"
+        titulo_card = "Parafusadeira em oferta"
         foto_card = ""
         
         if dados_prod:
@@ -277,7 +277,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 
     teclado = [
         [InlineKeyboardButton("🔗 VER BUSCA NA LISTA GERAL", url=gerar_link_afiliado(f"https://lista.mercadolivre.com.br/{requests.utils.quote(termo_inteligente)}"))],
-        [InlineKeyboardButton("✨ EXPLORAR MINHA VITRINE SOCIAL", url=LINK_VITRINE_SOCIAL)]
+        [InlineKeyboardButton("✨ Parafusadeira em oferta", url=LINK_VITRINE_SOCIAL)]
     ]
 
     if produtos:
