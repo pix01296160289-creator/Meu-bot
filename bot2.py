@@ -61,13 +61,6 @@ def gerar_link_afiliado(url_produto):
     return f"{url_limpa}{separador}matt_tool={AFFILIATE_ID}"
 
 # =========================
-# LIMPEZA DE TEXTO
-# =========================
-def limpar_termo(texto):
-    texto_limpo = re.sub(r'[^\w\s]', '', texto)
-    return ' '.join(texto_limpo.split()).strip()
-
-# =========================
 # EXTRAIR ITEM ID DE UM LINK DO MERCADO LIVRE
 # =========================
 def extrair_item_id_do_link(url):
@@ -98,10 +91,11 @@ def buscar_produto_por_link(url_produto):
 # =========================
 def interpretar_com_ia(texto_usuario):
     prompt_sistema = (
-        "Você é o Merlim, um assistente de inteligência artificial especialista em e-commerce e caça a ofertas no Mercado Livre. "
-        "O usuário vai digitar algo para você. Sua tarefa é analisar o texto e extrair APENAS o nome limpo do produto ou termo principal "
-        "que ele deseja buscar (ex: se ele disser 'preciso de uma parafusadeira boa', você retorna apenas 'parafusadeira'). "
-        "Se o usuário disser 'oi', 'olá', 'bom dia' ou outra saudação sem pedir produto, responda apenas 'CONVERSA'."
+        "Você é o Merlim, um assistente de inteligência artificial especialista em e-commerce e busca de produtos no Mercado Livre. "
+        "O usuário vai digitar o nome de um produto ou modelo (ex: 'celular Samsung A07', 'furadeira de impacto bosch'). "
+        "Sua tarefa é extrair e retornar o termo de busca exato e otimizado para o Mercado Livre. "
+        "Não remova marcas ou modelos importantes (como Samsung A07). Retorne apenas o termo limpo para pesquisa, sem pontuação extra. "
+        "Se o usuário disser apenas 'oi', 'olá' ou saudações, retorne apenas 'CONVERSA'."
     )
     try:
         chat_completion = client_groq.chat.completions.create(
@@ -114,25 +108,27 @@ def interpretar_com_ia(texto_usuario):
             max_tokens=50
         )
         resposta = chat_completion.choices[0].message.content.strip()
-        return limpar_termo(resposta)
+        return resposta
     except Exception as e:
         print(f"Erro na API da Groq: {e}")
-        return limpar_termo(texto_usuario)
+        return texto_usuario
 
 # =========================
-# BUSCA DE PRODUTOS NO MERCADO LIVRE
+# BUSCA DE PRODUTOS NO MERCADO LIVRE (COM MENOR PREÇO)
 # =========================
 def buscar_produtos_mercadolivre(termo_busca):
-    termo_tratado = limpar_termo(termo_busca)
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        url = f"https://api.mercadolivre.com/sites/MLB/search?q={requests.utils.quote(termo_tratado)}&limit=5"
+        # Faz a busca na API do Mercado Livre
+        url = f"https://api.mercadolibre.com/sites/MLB/search?q={requests.utils.quote(termo_busca)}&limit=10"
         response = requests.get(url, headers=headers, timeout=10)
         
         if response.status_code == 200:
             resultados = response.json().get("results", [])
             if resultados:
-                return resultados
+                # Organiza os produtos encontrados do menor preço para o maior preço automaticamente!
+                resultados_ordenados = sorted(resultados, key=lambda x: x.get("price", 0))
+                return resultados_ordenados
     except Exception as e:
         print(f"Erro na busca API ML: {e}")
     return []
@@ -147,7 +143,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     legenda_boas_vindas = (
         "🧙‍♂️ **MERLIM DAS OFERTAS** | *Seu Assistente Inteligente*\n\n"
-        "Seja muito bem-vindo! Digite o nome de qualquer produto que eu entro no Mercado Livre agora mesmo e busco a melhor oferta para você.\n\n"
+        "Seja muito bem-vindo! Digite o nome de **qualquer produto ou modelo** (ex: *celular Samsung A07*, *parafusadeira*) que eu entro no Mercado Livre e acho o menor preço para você.\n\n"
         "👉 **Para começarmos, digite o seu nome ou apelido abaixo:**"
     )
 
@@ -203,17 +199,16 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 
     # Captura o nome se ainda não estiver definido
     if "nome" not in context.user_data:
-        nome_limpo = limpar_termo(texto_usuario)
-        if len(nome_limpo) < 2 or "Ofertas" in texto_usuario or "Celular" in texto_usuario or "Tênis" in texto_usuario or "Notebook" in texto_usuario or "Ferramentas" in texto_usuario:
+        if len(texto_usuario) < 2 or "Ofertas" in texto_usuario or "Celular" in texto_usuario or "Tênis" in texto_usuario or "Ferramentas" in texto_usuario:
             await update.message.reply_text("⚠️ Por favor, digite o seu nome ou apelido primeiro para continuarmos:")
             return
         
-        context.user_data["nome"] = nome_limpo
+        context.user_data["nome"] = texto_usuario
         nome_usuario = context.user_data["nome"]
 
         await context.bot.send_message(
             chat_id=chat_id, 
-            text=f"✨ **Tudo pronto, {nome_usuario}!**\n\nAgora você pode digitar o nome de **qualquer produto** (ex: celular, tênis, furadeira) ou mandar um link direto do Mercado Livre para gerar seu card com comissão!\n\n**O que você deseja buscar agora?**:",
+            text=f"✨ **Tudo pronto, {nome_usuario}!**\n\nAgora você pode digitar o nome de **qualquer produto ou modelo** (ex: celular Samsung A07, tênis Nike, furadeira) que eu busco a melhor oferta com o seu código de afiliado!\n\n**O que você deseja buscar agora?**:",
             reply_markup=ReplyKeyboardMarkup(
                 [[KeyboardButton("📱 Celular"), KeyboardButton("👟 Tênis"), KeyboardButton("💻 Notebook")],
                  [KeyboardButton("🛠️ Mais Vendidos / Ferramentas"), KeyboardButton("✨ Parafusadeira em oferta")]],
@@ -275,32 +270,28 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     # Atalhos rápidos dos botões do menu
-    if "Celular" in texto_usuario:
-        texto_usuario = "celular"
-    elif "Tênis" in texto_usuario:
-        texto_usuario = "tenis"
-    elif "Notebook" in texto_usuario:
+    if texto_usuario == "📱 Celular":
+        texto_usuario = "celular smartphone"
+    elif texto_usuario == "👟 Tênis":
+        texto_usuario = "tenis masculino"
+    elif texto_usuario == "💻 Notebook":
         texto_usuario = "notebook"
-    elif "Ferramentas" in texto_usuario:
-        texto_usuario = "ferramentas"
-    elif "Ofertas" in texto_usuario:
-        texto_usuario = "ofertas imperdíveis"
 
     nome_usuario = context.user_data.get("nome", "Cliente")
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
+    # IA interpreta o pedido do usuário
     termo_inteligente = interpretar_com_ia(texto_usuario)
-    
     if termo_inteligente == "CONVERSA" or not termo_inteligente:
-        termo_inteligente = limpar_termo(texto_usuario)
+        termo_inteligente = texto_usuario
 
     msg_aguarde = await context.bot.send_message(
         chat_id=chat_id, 
-        text=f"🧙‍♂️ *Merlim (IA) entrando no Mercado Livre para garimper:* `{termo_inteligente}`...", 
+        text=f"🧙‍♂️ *Merlim (IA) buscando o menor preço para:* `{termo_inteligente}`...", 
         parse_mode="Markdown"
     )
     
-    # BUSCA OS PRODUTOS REAIS DIRETO NA API DO MERCADO LIVRE
+    # BUSCA OS PRODUTOS REAIS NO MERCADO LIVRE E ORDENA PELO MENOR PREÇO
     produtos = buscar_produtos_mercadolivre(termo_inteligente)
     
     try:
@@ -309,28 +300,28 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         pass
 
     if produtos:
-        # Pega o primeiro produto retornado pelo Mercado Livre
-        primeiro_produto = produtos[0]
-        titulo = primeiro_produto.get("title")
-        preco_atual = primeiro_produto.get("price", 0)
-        link_original_produto = primeiro_produto.get("permalink") # <--- AQUI PEGA O LINK DIRETO DO PRODUTO ESPECÍFICO!
+        # Pega o primeiro produto (que agora é garantido ser o de menor preço da lista ordenada)
+        melhor_oferta = produtos[0]
+        titulo = melhor_oferta.get("title")
+        preco_atual = melhor_oferta.get("price", 0)
+        link_original_produto = melhor_oferta.get("permalink")
         
-        # Converte o link original do produto adicionando o seu ID de afiliado tool
+        # Converte o link adicionando o seu ID de afiliado tool
         link_afiliado_produto = gerar_link_afiliado(link_original_produto)
 
-        foto_url = primeiro_produto.get("thumbnail", "")
+        foto_url = melhor_oferta.get("thumbnail", "")
         if foto_url:
             foto_url = foto_url.replace("-I.jpg", "-O.jpg")
 
         texto_oferta = (
-            f"🏆 **MELHOR OFERTA ENCONTRADA!**\n\n"
+            f"🏆 **MENOR PREÇO ENCONTRADO!**\n\n"
             f"🛒 *{titulo}*\n"
             f"🟢 **Preço:** R$ {preco_atual:,.2f}\n\n"
-            f"Clique no botão abaixo para ver o produto oficial:"
+            f"Clique no botão abaixo para garantir sua oferta com segurança:"
         )
 
         teclado_produto_especifico = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔗 Ver Produto Exato e Comprar", url=link_afiliado_produto)],
+            [InlineKeyboardButton("🔗 Ver Oferta e Comprar", url=link_afiliado_produto)],
             [InlineKeyboardButton("✨ Ver Vitrine Completa", url=LINK_VITRINE_SOCIAL)]
         ])
 
@@ -355,13 +346,13 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
-    # Caso não ache nenhum produto específico
+    # Caso não ache nenhum produto
     teclado_fallback = [
         [InlineKeyboardButton("✨ Acessar Vitrine de Ofertas", url=LINK_VITRINE_SOCIAL)]
     ]
     await context.bot.send_message(
         chat_id=chat_id, 
-        text=f"📦 Não encontrei um produto exato para `{termo_inteligente}`, mas você pode conferir as melhores opções na minha vitrine:", 
+        text=f"📦 Não encontrei resultados para `{termo_inteligente}` no momento, mas você pode conferir as melhores opções na minha vitrine:", 
         reply_markup=InlineKeyboardMarkup(teclado_fallback), 
         parse_mode="Markdown"
     )
@@ -370,7 +361,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 # MAIN
 # =========================
 def main():
-    print("🧙‍♂️ Iniciando o Merlim com Busca de Produtos Reais...", flush=True)
+    print("🧙‍♂️ Iniciando o Merlim com IA e Menor Preço Automático...", flush=True)
     request = HTTPXRequest(connection_pool_size=20, connect_timeout=60, read_timeout=60)
     app = Application.builder().token(TOKEN).request(request).build()
 
@@ -378,7 +369,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_texto_livre))
 
-    print("✅ Merlim 100% operacional com links individuais!", flush=True)
+    print("✅ Merlim 100% operacional com inteligência de busca!", flush=True)
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
