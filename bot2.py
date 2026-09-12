@@ -18,8 +18,8 @@ TOKEN = os.getenv("TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 AFFILIATE_ID = "fe20250121204050"
 
-# Link da sua Vitrine Social oficial do Mercado Livre
-LINK_VITRINE_SOCIAL = "https://www.mercadolivre.com.br/social/boletandoofertas?matt_word=diogenes&matt_tool=fe20250121204050&forceInApp=true&ref=BAFmMTXO%2BxWa3NkkmM5w2bxYG1TSxTTbK5V8JaMwh3kwo6xtphbzD16CmPon1AVWSRl0d%2B4xSl8Z5YfGJqCekVhZrEiwhhn0q6lO2AyXaHFG5Y57oWKdQ%2FUi53SzE9J%2BzpO51RD9i0MrBMwG%2FMhmXijlhrZ3MIS%2BPucSDNcbhqhx%2F5AWZfZ9M%2FRwkMz9it%2FfQX3%2FK%2BzOTqdJqKHfcg%3D%3D"
+# Link oficial da sua Vitrine Social fornecido por você
+LINK_VITRINE_SOCIAL = "https://www.mercadolivre.com.br/social/fe20250121204050?matt_word=fe20250121204050&matt_tool=72221096&forceInApp=true&ref=BCHCIAky81FsdxQcfbha%2BxMSne6JjpPAkNIDQyptcnf%2BMvfa04OUixCLqRcuFbYvVdd830SIgt7tPGzIzEwcK1t2RUFPtJp2Z6NIsiltU3EhyHO2oBorwOkw0cievtRZijNuMRQADZwieK8as%2F2GHDB2F1l9EuWKBhXJjTNnJYMRClM7y4PxPtJN03wKYNGnzRWjVLfVGaPHSSVvaVjLuh9fRn2eZULxaqINKZfR24VLgZbK#origin=whatsapp"
 
 if not TOKEN or not GROQ_API_KEY:
     print("❌ ERRO: Verifique suas chaves TOKEN e GROQ_API_KEY no arquivo .env ou no Railway", flush=True)
@@ -40,7 +40,6 @@ async def erro_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 def gerar_link_afiliado(url_produto):
     if not AFFILIATE_ID:
         return url_produto
-    # Remove parâmetros matt_tool antigos se houver para evitar conflito
     url_limpa = re.sub(r'([?&])matt_tool=[^&]+', '', url_produto)
     separador = "&" if "?" in url_limpa else "?"
     return f"{url_limpa}{separador}matt_tool={AFFILIATE_ID}"
@@ -56,7 +55,6 @@ def limpar_termo(texto):
 # EXTRAIR ITEM ID DE UM LINK DO MERCADO LIVRE
 # =========================
 def extrair_item_id_do_link(url):
-    # Procura por padrões como MLB-123456789 ou MLB123456789 na URL
     match = re.search(r'MLB-?(\d+)', url)
     if match:
         return f"MLB{match.group(1)}"
@@ -200,7 +198,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         dados_prod = buscar_produto_por_link(texto_usuario)
         link_afiliado_pronto = gerar_link_afiliado(texto_usuario)
         
-        titulo_card = "Produto Selecionado no Mercado Livre"
+        titulo_card = "Parafusadeira Furadeira em Promoção"
         foto_card = ""
         
         if dados_prod:
@@ -236,7 +234,6 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
             except Exception:
                 pass
         
-        # Caso não consiga a foto, envia em texto com o botão
         await context.bot.send_message(
             chat_id=chat_id,
             text=legenda_card,
