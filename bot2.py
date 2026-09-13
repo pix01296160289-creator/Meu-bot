@@ -197,40 +197,51 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     except Exception:
         pass
 
-    # Botões padrão direcionando tanto para a busca quanto direto para a Vitrine Social
-    teclado = [
-        [InlineKeyboardButton("🔗 VER BUSCA NA LISTA GERAL", url=gerar_link_afiliado(f"https://lista.mercadolivre.com.br/{requests.utils.quote(termo_inteligente)}"))],
-        [InlineKeyboardButton("✨ EXPLORAR MINHA VITRINE SOCIAL", url=LINK_VITRINE_SOCIAL)]
-    ]
-
     if produtos:
         primeiro_produto = produtos[0]
         titulo = primeiro_produto.get("title")
         preco_atual = primeiro_produto.get("price", 0)
+        link_produto_original = primeiro_produto.get("permalink", "")
+        
+        # Gera o link com a comissão do afiliado injetada
+        link_com_comissao = gerar_link_afiliado(link_produto_original) if link_produto_original else gerar_link_afiliado(f"https://lista.mercadolivre.com.br/{requests.utils.quote(termo_inteligente)}")
         
         foto_url = primeiro_produto.get("thumbnail", "")
         if foto_url:
             foto_url = foto_url.replace("-I.jpg", "-O.jpg")
 
-        texto_oferta = (
-            f"🏆 **IA ENCONTROU A MELHOR OFERTA!**\n\n"
-            f"🛒 *{titulo}*\n"
-            f"🟢 **Menor preço:** R$ {preco_atual:,.2f}\n\n"
-            f"👇 *Veja todas as opções na vitrine oficial:*"
+        # Mensagem estilo post de compartilhamento profissional
+        texto_compartilhamento = (
+            f"🔥 **ACHADO DO MERCADO LIVRE PARA VOCÊ!**\n\n"
+            f"📦 *{titulo}*\n"
+            f"💰 Por apenas: **R$ {preco_atual:,.2f}**\n\n"
+            f"👇 *Toque no botão abaixo para ver detalhes e garantir o seu com segurança:*"
         )
+
+        teclado_card = [
+            [InlineKeyboardButton("🔗 ACESSAR LINK DO PRODUTO", url=link_com_comissao)],
+            [InlineKeyboardButton("✨ Ver Mais Opções na Vitrine", url=LINK_VITRINE_SOCIAL)]
+        ]
 
         if foto_url:
             try:
                 await context.bot.send_photo(
                     chat_id=chat_id,
                     photo=foto_url,
-                    caption=texto_oferta,
-                    reply_markup=InlineKeyboardMarkup(teclado),
+                    caption=texto_compartilhamento,
+                    reply_markup=InlineKeyboardMarkup(teclado_card),
                     parse_mode="Markdown"
                 )
                 return
             except Exception:
                 pass
+
+    # Caso alternativo se não achar foto ou produto específico
+    link_busca_geral = gerar_link_afiliado(f"https://lista.mercadolivre.com.br/{requests.utils.quote(termo_inteligente)}")
+    teclado_fallback = [
+        [InlineKeyboardButton("🔗 VER BUSCA NA LISTA GERAL", url=link_busca_geral)],
+        [InlineKeyboardButton("✨ EXPLORAR MINHA VITRINE SOCIAL", url=LINK_VITRINE_SOCIAL)]
+    ]
 
     texto_catalogo = (
         f"📦 **Catálogo Completo: {termo_inteligente.title()}**\n\n"
@@ -241,7 +252,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     await context.bot.send_message(
         chat_id=chat_id, 
         text=texto_catalogo, 
-        reply_markup=InlineKeyboardMarkup(teclado), 
+        reply_markup=InlineKeyboardMarkup(teclado_fallback), 
         parse_mode="Markdown"
     )
 
@@ -249,7 +260,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 # MAIN
 # =========================
 def main():
-    print("🧙‍♂️ Iniciando o Merlim com Foco na Vitrine Social...", flush=True)
+    print("🧙‍♂️ Iniciando o Merlim com Foco em Compartilhamento de Ofertas...", flush=True)
     request = HTTPXRequest(connection_pool_size=20, connect_timeout=60, read_timeout=60)
     app = Application.builder().token(TOKEN).request(request).build()
 
