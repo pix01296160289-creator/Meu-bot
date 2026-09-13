@@ -1,7 +1,6 @@
 import os
 import sys
 import re
-import asyncio
 from dotenv import load_dotenv
 import requests
 from groq import Groq
@@ -16,8 +15,9 @@ print("🔄 Carregando variáveis de ambiente...", flush=True)
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-AFFILIATE_ID = os.getenv("AFFILIATE_ID", "72221096") # Seu código Matt Tool
+AFFILIATE_ID = os.getenv("AFFILIATE_ID", "72221096") # Seu código Matt Tool configurado
 
+# Link da sua vitrine social de backup/geral
 LINK_VITRINE_SOCIAL = "https://www.mercadolivre.com.br/social/fe20250121204050?matt_word=fe20250121204050&matt_tool=72221096&forceInApp=true&ref=BOjxjRP0JfIdxgeD6HICroH6V3KT5oSzPmxPAfx%2FcXkUiqE9JAgL38r3CvjMjfk6qEKST%2BPRODeLqjdF%2F%2Bp2o670f%2BFkU7UrCz8YgPkWed1zCp7rXiUzZ0AvRD3Fh%2Fpp0d9Xaz%2BB7ghvvzVHs7bpuv4MAymDzj3m0y%2FsTYbrixIXDIxivYq2u%2FAG36FmjHPBX9AEjNsZ0q8mRMXLUiti3LORlQnP9PIIj2ETFoUB2q0%3D#origin=whatsapp"
 
 if not TOKEN or not GROQ_API_KEY:
@@ -44,9 +44,8 @@ def limpar_termo(texto):
 
 def interpretar_com_ia(texto_usuario):
     prompt_sistema = (
-        "Você é o Merlim, um assistente de inteligência artificial especialista em e-commerce e caça a ofertas no Mercado Livre. "
-        "O usuário vai digitar algo para você. Sua tarefa é extrair APENAS o nome limpo do produto que ele deseja buscar "
-        "(ex: se ele disser 'quero um celular', retorne apenas 'celular'; se disser 'me manda uma furadeira', retorne 'furadeira'). "
+        "Você é o Merlim, assistente de e-commerce e ofertas do Mercado Livre. "
+        "Extraia APENAS o termo limpo do produto desejado (ex: 'celular', 'furadeira', 'televisao'). "
         "Se for saudação, retorne 'CONVERSA'."
     )
     try:
@@ -66,22 +65,33 @@ def interpretar_com_ia(texto_usuario):
         return limpar_termo(texto_usuario)
 
 # =========================
-# BUSCA O PRIMEIRO PRODUTO NA API DO ML
+# BUSCA O PRIMEIRO PRODUTO DA VITRINE (BLINDADA)
 # =========================
 def buscar_primeiro_produto(termo_busca):
     termo_tratado = limpar_termo(termo_busca)
     try:
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        # Pega apenas 1 resultado (o primeiro da lista)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json",
+            "Accept-Language": "pt-BR,pt;q=0.9",
+            "Referer": "https://www.mercadolivre.com.br/"
+        }
+        
         url = f"https://api.mercadolibre.com/sites/MLB/search?q={requests.utils.quote(termo_tratado)}&limit=1"
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=15)
+        
+        print(f"📡 Status da API do ML para '{termo_tratado}': {response.status_code}", flush=True)
         
         if response.status_code == 200:
-            resultados = response.json().get("results", [])
+            dados = response.json()
+            resultados = dados.get("results", [])
             if resultados:
-                return resultados[0] # Retorna exatamente o primeiro produto da busca
+                return resultados[0] # Pega exatamente o primeiro produto da vitrine/busca
+        else:
+            print(f"⚠️ Erro ML Status {response.status_code}: {response.text}", flush=True)
+            
     except Exception as e:
-        print(f"Erro na busca API ML: {e}")
+        print(f"❌ Erro crítico na requisição da API: {e}", flush=True)
     return None
 
 # =========================
@@ -93,7 +103,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     legenda_boas_vindas = (
         "🧙‍♂️ **MERLIM DAS OFERTAS**\n\n"
-        "Me diga o que você está procurando (ex: *celular*, *furadeira*, *tênis*), eu entro no Mercado Livre, pego o primeiro produto da lista e já te entrego com o seu link de afiliado!\n\n"
+        "Me diga o que você procura (ex: *celular*, *furadeira*, *tênis*), eu entro na vitrine do Mercado Livre, pego o primeiro produto em destaque e te entrego com o seu link de afiliado pronto!\n\n"
         "👉 **Para começarmos, digite o seu nome ou apelido abaixo:**"
     )
 
@@ -122,7 +132,6 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
-    # Captura o nome do usuário primeiro
     if "nome" not in context.user_data:
         nome_limpo = limpar_termo(texto_usuario)
         if len(nome_limpo) < 2 or "Vitrine" in texto_usuario:
@@ -132,7 +141,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["nome"] = nome_limpo
         await context.bot.send_message(
             chat_id=chat_id, 
-            text=f"✨ **Tudo pronto, {nome_limpo}!**\n\nAgora é só digitar o que você quer buscar (Ex: *celular*, *furadeira*, *televisão*). Eu busco o primeiro produto da lista e te mando o link com comissão!",
+            text=f"✨ **Tudo pronto, {nome_limpo}!**\n\nAgora digite o que você quer buscar (Ex: *celular*, *furadeira*). Vou vasculhar a vitrine e te mandar o link direto do primeiro produto com comissão ativa!",
             reply_markup=ReplyKeyboardMarkup(
                 [[KeyboardButton("📱 Celular"), KeyboardButton("⚡ Furadeira")],
                  [KeyboardButton("✨ Minha Vitrine de Ofertas")]],
@@ -142,13 +151,11 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
-    # Atalhos rápidos de botões
     if "Celular" in texto_usuario:
         texto_usuario = "celular"
     elif "Furadeira" in texto_usuario:
         texto_usuario = "furadeira"
 
-    nome_usuario = context.user_data.get("nome", "Cliente")
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
     termo_inteligente = interpretar_com_ia(texto_usuario)
@@ -157,11 +164,11 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 
     msg_aguarde = await context.bot.send_message(
         chat_id=chat_id, 
-        text=f"🔍 *Entrando no Mercado Livre e buscando:* `{termo_inteligente}`...", 
+        text=f"🔍 *Vasculhando a vitrine do Mercado Livre para:* `{termo_inteligente}`...", 
         parse_mode="Markdown"
     )
     
-    # 1. O bot busca e pega o primeiro produto da lista
+    # O bot busca o produto e entra na página do primeiro item da vitrine
     produto = buscar_primeiro_produto(termo_inteligente)
     
     try:
@@ -172,22 +179,21 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     if produto:
         titulo = produto.get("title")
         preco = produto.get("price", 0)
-        link_original = produto.get("permalink", "")
-        foto = produto.get("thumbnail", "").replace("-I.jpg", "-O.jpg")
+        link_original = produto.get("permalink", "") # Link exato da página do produto escolhido
+        foto = produto.get("thumbnail", "").replace("-I.jpg", "-O.jpg") # Foto em alta qualidade
         
-        # 2 e 3. Pega o link exato e adiciona o matt_tool
+        # Insere o seu matt_tool de afiliado no link do produto
         link_com_comissao = gerar_link_afiliado(link_original)
 
-        # 4. Envia o produto encontrado e compartilhado para o cliente
         texto_compartilhamento = (
-            f"🔥 **ACHADO EM DESTAQUE PARA VOCÊ!**\n\n"
+            f"🔥 **ACHADO EM DESTAQUE NA VITRINE!**\n\n"
             f"📦 *{titulo}*\n"
             f"💰 Preço: **R$ {preco:,.2f}**\n\n"
-            f"👇 *Toque no botão abaixo para ver o produto e garantir sua comissão:*"
+            f"👇 *Toque no botão abaixo para ver a página do produto e garantir sua comissão:*"
         )
 
         teclado = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔗 ACESSAR PRODUTO", url=link_com_comissao)],
+            [InlineKeyboardButton("🔗 ACESSAR PÁGINA DO PRODUTO", url=link_com_comissao)],
             [InlineKeyboardButton("✨ Ver Mais na Vitrine", url=LINK_VITRINE_SOCIAL)]
         ])
 
@@ -204,7 +210,6 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
             except Exception:
                 pass
 
-        # Se falhar a foto, manda em texto
         await context.bot.send_message(
             chat_id=chat_id,
             text=texto_compartilhamento,
@@ -213,10 +218,15 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
-    # Caso não ache nada
+    # Fallback caso ocorra qualquer instabilidade na API
+    link_fallback = gerar_link_afiliado(f"https://lista.mercadolivre.com.br/{requests.utils.quote(termo_inteligente)}")
     await context.bot.send_message(
         chat_id=chat_id, 
-        text=f"❌ Não encontrei nenhum produto para '{termo_inteligente}'. Tente buscar outro termo!",
+        text=f"📦 **Ofertas de {termo_inteligente.title()}**\n\nAcesse o link abaixo para ver as opções em destaque:",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔗 VER LISTA DE OFERTAS", url=link_fallback)],
+            [InlineKeyboardButton("✨ MINHA VITRINE SOCIAL", url=LINK_VITRINE_SOCIAL)]
+        ]),
         parse_mode="Markdown"
     )
 
