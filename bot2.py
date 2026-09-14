@@ -1,4 +1,3 @@
-
 import os
 import sys
 import re
@@ -19,6 +18,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 # Seu link oficial de afiliado do Mercado Livre (meli.la)
 LINK_VITRINE_SOCIAL = "https://meli.la/1FVqCEw"
+ARQUIVO_USUARIOS = "usuarios.txt"
 
 if not TOKEN or not GROQ_API_KEY:
     print("❌ ERRO: Verifique suas chaves TOKEN e GROQ_API_KEY no Railway", flush=True)
@@ -32,6 +32,30 @@ async def erro_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 def limpar_termo(texto):
     texto_limpo = re.sub(r'[^\w\s]', '', texto)
     return ' '.join(texto_limpo.split()).strip()
+
+# =========================
+# FUNÇÃO DE CONTROLE DE USUÁRIOS
+# =========================
+def registrar_usuario(chat_id):
+    chat_id_str = str(chat_id)
+    usuarios = set()
+    
+    # Lê os usuários já salvos (se o arquivo existir)
+    if os.path.exists(ARQUIVO_USUARIOS):
+        with open(ARQUIVO_USUARIOS, "r", encoding="utf-8") as f:
+            for linha in f:
+                uid = linha.strip()
+                if uid:
+                    usuarios.add(uid)
+                    
+    # Se for um usuário novo, adiciona e salva
+    if chat_id_str not in usuarios:
+        usuarios.add(chat_id_str)
+        with open(ARQUIVO_USUARIOS, "w", encoding="utf-8") as f:
+            for uid in usuarios:
+                f.write(f"{uid}\n")
+                
+    return len(usuarios)
 
 def interpretar_com_ia(texto_usuario):
     prompt_sistema = (
@@ -84,6 +108,9 @@ def buscar_produto_vitrine(termo_busca):
 # COMANDOS E FLUXO DO TELEGRAM
 # =========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    registrar_usuario(chat_id) # Registra o usuário ao iniciar
+    
     context.user_data.clear()
     banner_url = "https://i.ibb.co/pr5XpyL8/image-1789089291368.jpg"
     
@@ -94,7 +121,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     teclado_menu = ReplyKeyboardMarkup(
-        [[KeyboardButton("✨ Minha Vitrine de Ofertas")]],
+        [[KeyboardButton("✨ Minha Vitrine de Ofertas", style="success")]],
         resize_keyboard=True
     )
 
@@ -103,8 +130,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         await update.message.reply_text(legenda_boas_vindas, reply_markup=teclado_menu, parse_mode="Markdown")
 
+# Comando secreto para você ver quantas pessoas já usaram o bot (/stats)
+async def estatisticas(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    total = 0
+    if os.path.exists(ARQUIVO_USUARIOS):
+        with open(ARQUIVO_USUARIOS, "r", encoding="utf-8") as f:
+            total = sum(1 for linha in f if linha.strip())
+            
+    await update.message.reply_text(
+        f"📊 **ESTATÍSTICAS DO BOT**\n\n👥 Total de usuários únicos cadastrados: **{total}**",
+        parse_mode="Markdown"
+    )
+
 async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
+    registrar_usuario(chat_id) # Garante o registro em qualquer interação
     texto_usuario = update.message.text.strip()
 
     if "Vitrine" in texto_usuario:
@@ -125,22 +165,45 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
             return
         
         context.user_data["nome"] = nome_limpo
+        
+        # 10 Botões alternando entre Vermelho (danger) e Verde (success)
+        teclado_opcoes = ReplyKeyboardMarkup(
+            [
+                [KeyboardButton("📱 Celulares", style="danger"), KeyboardButton("⚡ Ferramentas", style="success")],
+                [KeyboardButton("💻 Informática", style="success"), KeyboardButton("🏠 Casa e Cozinha", style="danger")],
+                [KeyboardButton("🎮 Games", style="danger"), KeyboardButton("📺 Eletrônicos", style="success")],
+                [KeyboardButton("👟 Calçados", style="success"), KeyboardButton("⌚ Relógios", style="danger")],
+                [KeyboardButton("🔧 Construção", style="danger"), KeyboardButton("✨ Minha Vitrine de Ofertas", style="success")]
+            ],
+            resize_keyboard=True
+        )
+
         await context.bot.send_message(
             chat_id=chat_id, 
-            text=f"✨ **Tudo pronto, {nome_limpo}!**\n\nAgora digite o que você quer buscar (Ex: *celular*, *furadeira*). Vou buscar a oferta para você!",
-            reply_markup=ReplyKeyboardMarkup(
-                [[KeyboardButton("📱 Celular"), KeyboardButton("⚡ Furadeira")],
-                 [KeyboardButton("✨ Minha Vitrine de Ofertas")]],
-                resize_keyboard=True
-            ),
+            text=f"✨ **Tudo pronto, {nome_limpo}!**\n\nEscolha uma categoria abaixo ou digite o que você quer buscar:",
+            reply_markup=teclado_opcoes,
             parse_mode="Markdown"
         )
         return
 
     if "Celular" in texto_usuario:
         texto_usuario = "celular"
-    elif "Furadeira" in texto_usuario:
-        texto_usuario = "furadeira"
+    elif "Ferramenta" in texto_usuario:
+        texto_usuario = "ferramenta"
+    elif "Informática" in texto_usuario:
+        texto_usuario = "informatica"
+    elif "Casa" in texto_usuario:
+        texto_usuario = "casa"
+    elif "Game" in texto_usuario:
+        texto_usuario = "games"
+    elif "Eletrônico" in texto_usuario:
+        texto_usuario = "eletronicos"
+    elif "Calçado" in texto_usuario:
+        texto_usuario = "calcados"
+    elif "Relógio" in texto_usuario:
+        texto_usuario = "relogios"
+    elif "Construção" in texto_usuario:
+        texto_usuario = "construcao"
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
@@ -215,6 +278,7 @@ def main():
 
     app.add_error_handler(erro_handler)
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("stats", estatisticas)) # Comando para ver os números
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_texto_livre))
 
     print("✅ Merlim operando com sucesso!", flush=True)
@@ -222,3 +286,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+            
