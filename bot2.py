@@ -16,8 +16,9 @@ load_dotenv()
 TOKEN = os.getenv("TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-# Seu link oficial de afiliado do Mercado Livre (meli.la)
+# Links oficiais de afiliado do Mercado Livre (meli.la)
 LINK_VITRINE_SOCIAL = "https://meli.la/1FVqCEw"
+LINK_SAMSUNG = "https://meli.la/2gjHtvf"
 ARQUIVO_USUARIOS = "usuarios.txt"
 
 if not TOKEN or not GROQ_API_KEY:
@@ -118,7 +119,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👉 **Para começarmos, digite o seu nome ou apelido abaixo:**"
     )
 
-    # Teclado de boas-vindas simples para iniciar
     teclado_menu = ReplyKeyboardMarkup(
         [[KeyboardButton("✨ Minha Vitrine de Ofertas")]],
         resize_keyboard=True
@@ -156,6 +156,19 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
+    # Se o cliente clicar no botão direto de Celulares Samsung
+    if "Samsung" in texto_usuario or "Celulares" in texto_usuario:
+        teclado_inline_samsung = [
+            [InlineKeyboardButton("📱 VER CELULARES SAMSUNG", url=LINK_SAMSUNG)],
+            [InlineKeyboardButton("✨ Acessar Vitrine Completa", url=LINK_VITRINE_SOCIAL)]
+        ]
+        await update.message.reply_text(
+            "📱 **Ofertas Exclusivas - Celulares Samsung**\n\nToque no botão abaixo para ver as melhores opções com seu link de afiliado garantido:",
+            reply_markup=InlineKeyboardMarkup(teclado_inline_samsung),
+            parse_mode="Markdown"
+        )
+        return
+
     if "nome" not in context.user_data:
         nome_limpo = limpar_termo(texto_usuario)
         if len(nome_limpo) < 2 or "Vitrine" in texto_usuario:
@@ -167,7 +180,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         # 10 Botões organizados em 5 linhas, alternando cores (Vermelho e Verde)
         teclado_opcoes = ReplyKeyboardMarkup(
             [
-                [KeyboardButton("📱 Celulares", style="danger"), KeyboardButton("⚡ Ferramentas", style="success")],
+                [KeyboardButton("📱 Celulares Samsung", style="danger"), KeyboardButton("⚡ Ferramentas", style="success")],
                 [KeyboardButton("💻 Informática", style="success"), KeyboardButton("🏠 Casa e Cozinha", style="danger")],
                 [KeyboardButton("🎮 Games", style="danger"), KeyboardButton("📺 Eletrônicos", style="success")],
                 [KeyboardButton("👟 Calçados", style="success"), KeyboardButton("⌚ Relógios", style="danger")],
@@ -184,9 +197,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
-    if "Celular" in texto_usuario:
-        texto_usuario = "celular"
-    elif "Ferramenta" in texto_usuario:
+    if "Ferramenta" in texto_usuario:
         texto_usuario = "ferramenta"
     elif "Informática" in texto_usuario:
         texto_usuario = "informatica"
@@ -284,3 +295,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
