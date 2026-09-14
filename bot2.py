@@ -40,7 +40,6 @@ def registrar_usuario(chat_id):
     chat_id_str = str(chat_id)
     usuarios = set()
     
-    # Lê os usuários já salvos (se o arquivo existir)
     if os.path.exists(ARQUIVO_USUARIOS):
         with open(ARQUIVO_USUARIOS, "r", encoding="utf-8") as f:
             for linha in f:
@@ -48,7 +47,6 @@ def registrar_usuario(chat_id):
                 if uid:
                     usuarios.add(uid)
                     
-    # Se for um usuário novo, adiciona e salva
     if chat_id_str not in usuarios:
         usuarios.add(chat_id_str)
         with open(ARQUIVO_USUARIOS, "w", encoding="utf-8") as f:
@@ -109,7 +107,7 @@ def buscar_produto_vitrine(termo_busca):
 # =========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    registrar_usuario(chat_id) # Registra o usuário ao iniciar
+    registrar_usuario(chat_id)
     
     context.user_data.clear()
     banner_url = "https://i.ibb.co/pr5XpyL8/image-1789089291368.jpg"
@@ -120,8 +118,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👉 **Para começarmos, digite o seu nome ou apelido abaixo:**"
     )
 
+    # Teclado de boas-vindas simples para iniciar
     teclado_menu = ReplyKeyboardMarkup(
-        [[KeyboardButton("✨ Minha Vitrine de Ofertas", style="success")]],
+        [[KeyboardButton("✨ Minha Vitrine de Ofertas")]],
         resize_keyboard=True
     )
 
@@ -130,7 +129,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         await update.message.reply_text(legenda_boas_vindas, reply_markup=teclado_menu, parse_mode="Markdown")
 
-# Comando secreto para você ver quantas pessoas já usaram o bot (/stats)
 async def estatisticas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total = 0
     if os.path.exists(ARQUIVO_USUARIOS):
@@ -144,7 +142,7 @@ async def estatisticas(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    registrar_usuario(chat_id) # Garante o registro em qualquer interação
+    registrar_usuario(chat_id)
     texto_usuario = update.message.text.strip()
 
     if "Vitrine" in texto_usuario:
@@ -166,7 +164,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         
         context.user_data["nome"] = nome_limpo
         
-        # 10 Botões alternando entre Vermelho (danger) e Verde (success)
+        # 10 Botões organizados em 5 linhas, alternando cores (Vermelho e Verde)
         teclado_opcoes = ReplyKeyboardMarkup(
             [
                 [KeyboardButton("📱 Celulares", style="danger"), KeyboardButton("⚡ Ferramentas", style="success")],
@@ -278,7 +276,7 @@ def main():
 
     app.add_error_handler(erro_handler)
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("stats", estatisticas)) # Comando para ver os números
+    app.add_handler(CommandHandler("stats", estatisticas))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_texto_livre))
 
     print("✅ Merlim operando com sucesso!", flush=True)
@@ -286,4 +284,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-            
