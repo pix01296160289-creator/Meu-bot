@@ -16,7 +16,7 @@ load_dotenv()
 TOKEN = os.getenv("TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-# Links oficiais de afiliado do Mercado Livre (meli.la)
+# Links e Constantes
 LINK_VITRINE_SOCIAL = "https://meli.la/1FVqCEw"
 LINK_SAMSUNG = "https://meli.la/2gjHtvf"
 ARQUIVO_USUARIOS = "usuarios.txt"
@@ -35,7 +35,7 @@ def limpar_termo(texto):
     return ' '.join(texto_limpo.split()).strip()
 
 # =========================
-# FUNÇÃO DE CONTROLE DE USUÁRIOS
+# GERENCIAMENTO DE USUÁRIOS
 # =========================
 def registrar_usuario(chat_id):
     chat_id_str = str(chat_id)
@@ -56,11 +56,14 @@ def registrar_usuario(chat_id):
                 
     return len(usuarios)
 
+# =========================
+# PROCESSAMENTO INTELIGENTE (IA)
+# =========================
 def interpretar_com_ia(texto_usuario):
     prompt_sistema = (
         "Você é o Merlim, assistente de e-commerce e ofertas do Mercado Livre. "
-        "Extraia APENAS o termo limpo do produto desejado (ex: 'celular', 'furadeira', 'televisao'). "
-        "Se for saudação, retorne 'CONVERSA'."
+        "Extraia APENAS o termo limpo do produto desejado para busca (ex: 'celular', 'furadeira', 'televisao'). "
+        "Se for saudação ou conversa fiada, retorne 'CONVERSA'."
     )
     try:
         chat_completion = client_groq.chat.completions.create(
@@ -79,7 +82,7 @@ def interpretar_com_ia(texto_usuario):
         return limpar_termo(texto_usuario)
 
 # =========================
-# BUSCA O PRODUTO PARA ILUSTRAR
+# BUSCA DE PRODUTOS NA API DO ML
 # =========================
 def buscar_produto_vitrine(termo_busca):
     termo_tratado = limpar_termo(termo_busca)
@@ -104,7 +107,7 @@ def buscar_produto_vitrine(termo_busca):
     return None
 
 # =========================
-# COMANDOS E FLUXO DO TELEGRAM
+# FLUXO DO TELEGRAM
 # =========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -156,19 +159,20 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
-    # Se o cliente clicar no botão direto de Celulares Samsung
-    if "Samsung" in texto_usuario or "Celulares" in texto_usuario:
+    # Botão especial para Celulares em Oferta (Link Direto Samsung)
+    if "Celulares em Oferta" in texto_usuario or "Celulares" in texto_usuario:
         teclado_inline_samsung = [
-            [InlineKeyboardButton("📱 VER CELULARES SAMSUNG", url=LINK_SAMSUNG)],
+            [InlineKeyboardButton("📱 VER CELULARES EM OFERTA", url=LINK_SAMSUNG)],
             [InlineKeyboardButton("✨ Acessar Vitrine Completa", url=LINK_VITRINE_SOCIAL)]
         ]
         await update.message.reply_text(
-            "📱 **Ofertas Exclusivas - Celulares Samsung**\n\nToque no botão abaixo para ver as melhores opções com seu link de afiliado garantido:",
+            "📱 **Ofertas Exclusivas - Celulares**\n\nToque no botão abaixo para ver as melhores opções com seu link de afiliado garantido:",
             reply_markup=InlineKeyboardMarkup(teclado_inline_samsung),
             parse_mode="Markdown"
         )
         return
 
+    # Etapa de Captura de Nome
     if "nome" not in context.user_data:
         nome_limpo = limpar_termo(texto_usuario)
         if len(nome_limpo) < 2 or "Vitrine" in texto_usuario:
@@ -177,10 +181,10 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         
         context.user_data["nome"] = nome_limpo
         
-        # 10 Botões organizados em 5 linhas, alternando cores (Vermelho e Verde)
+        # Painel Otimizado de 10 botões estilizados
         teclado_opcoes = ReplyKeyboardMarkup(
             [
-                [KeyboardButton("📱 Celulares Samsung", style="danger"), KeyboardButton("⚡ Ferramentas", style="success")],
+                [KeyboardButton("📱 Celulares em Oferta", style="danger"), KeyboardButton("⚡ Ferramentas", style="success")],
                 [KeyboardButton("💻 Informática", style="success"), KeyboardButton("🏠 Casa e Cozinha", style="danger")],
                 [KeyboardButton("🎮 Games", style="danger"), KeyboardButton("📺 Eletrônicos", style="success")],
                 [KeyboardButton("👟 Calçados", style="success"), KeyboardButton("⌚ Relógios", style="danger")],
@@ -197,6 +201,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
+    # Mapeamento rápido de categorias do teclado fixo
     if "Ferramenta" in texto_usuario:
         texto_usuario = "ferramenta"
     elif "Informática" in texto_usuario:
@@ -295,4 +300,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
