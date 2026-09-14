@@ -57,17 +57,6 @@ def registrar_usuario(chat_id):
     return len(usuarios)
 
 # =========================
-# APAGAR MENSAGENS ANTERIORES DO BOT
-# =========================
-async def apagar_ultima_interacao(context: ContextTypes.DEFAULT_TYPE, chat_id):
-    if "ultima_msg_bot" in context.user_data:
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=context.user_data["ultima_msg_bot"])
-        except Exception:
-            pass
-        context.user_data.pop("ultima_msg_bot", None)
-
-# =========================
 # PROCESSAMENTO INTELIGENTE (IA)
 # =========================
 def interpretar_com_ia(texto_usuario):
@@ -139,11 +128,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        msg = await update.message.reply_photo(photo=banner_url, caption=legenda_boas_vindas, reply_markup=teclado_menu, parse_mode="Markdown")
-        context.user_data["ultima_msg_bot"] = msg.message_id
+        await update.message.reply_photo(photo=banner_url, caption=legenda_boas_vindas, reply_markup=teclado_menu, parse_mode="Markdown")
     except Exception:
-        msg = await update.message.reply_text(legenda_boas_vindas, reply_markup=teclado_menu, parse_mode="Markdown")
-        context.user_data["ultima_msg_bot"] = msg.message_id
+        await update.message.reply_text(legenda_boas_vindas, reply_markup=teclado_menu, parse_mode="Markdown")
 
 async def estatisticas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total = 0
@@ -161,19 +148,15 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     registrar_usuario(chat_id)
     texto_usuario = update.message.text.strip()
 
-    # Apaga a resposta anterior do bot para manter o chat limpo
-    await apagar_ultima_interacao(context, chat_id)
-
     if "Vitrine" in texto_usuario:
         teclado_inline_vitrine = [
             [InlineKeyboardButton("✨ ACESSAR VITRINE COMPLETA NO SITE", url=LINK_VITRINE_SOCIAL)]
         ]
-        msg = await update.message.reply_text(
+        await update.message.reply_text(
             "🛍️ **Vitrine Exclusiva do Merlim**\n\nClique abaixo para acessar todas as recomendações:",
             reply_markup=InlineKeyboardMarkup(teclado_inline_vitrine),
             parse_mode="Markdown"
         )
-        context.user_data["ultima_msg_bot"] = msg.message_id
         return
 
     # Botão especial para Celulares em Oferta (Link Direto Samsung)
@@ -182,24 +165,23 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
             [InlineKeyboardButton("📱 VER CELULARES EM OFERTA", url=LINK_SAMSUNG)],
             [InlineKeyboardButton("✨ Acessar Vitrine Completa", url=LINK_VITRINE_SOCIAL)]
         ]
-        msg = await update.message.reply_text(
+        await update.message.reply_text(
             "📱 **Ofertas Exclusivas - Celulares**\n\nToque no botão abaixo para ver as melhores opções com seu link de afiliado garantido:",
             reply_markup=InlineKeyboardMarkup(teclado_inline_samsung),
             parse_mode="Markdown"
         )
-        context.user_data["ultima_msg_bot"] = msg.message_id
         return
 
     # Etapa de Captura de Nome
     if "nome" not in context.user_data:
         nome_limpo = limpar_termo(texto_usuario)
         if len(nome_limpo) < 2 or "Vitrine" in texto_usuario:
-            msg = await update.message.reply_text("⚠️ Por favor, digite o seu nome ou apelido primeiro:")
-            context.user_data["ultima_msg_bot"] = msg.message_id
+            await update.message.reply_text("⚠️ Por favor, digite o seu nome ou apelido primeiro:")
             return
         
         context.user_data["nome"] = nome_limpo
         
+        # Teclado padrão do Telegram (sem estilos forçados que causam erro, ficando com o padrão limpo do app)
         teclado_opcoes = ReplyKeyboardMarkup(
             [
                 [KeyboardButton("📱 Celulares em Oferta"), KeyboardButton("⚡ Ferramentas")],
@@ -211,13 +193,12 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
             resize_keyboard=True
         )
 
-        msg = await context.bot.send_message(
+        await context.bot.send_message(
             chat_id=chat_id, 
             text=f"✨ **Tudo pronto, {nome_limpo}!**\n\nEscolha uma categoria abaixo ou digite o que você quer buscar:",
             reply_markup=teclado_opcoes,
             parse_mode="Markdown"
         )
-        context.user_data["ultima_msg_bot"] = msg.message_id
         return
 
     # Mapeamento rápido de categorias do teclado fixo
@@ -276,28 +257,26 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 
         if foto:
             try:
-                msg = await context.bot.send_photo(
+                await context.bot.send_photo(
                     chat_id=chat_id,
                     photo=foto,
                     caption=texto_compartilhamento,
                     reply_markup=teclado,
                     parse_mode="Markdown"
                 )
-                context.user_data["ultima_msg_bot"] = msg.message_id
                 return
             except Exception:
                 pass
 
-        msg = await context.bot.send_message(
+        await context.bot.send_message(
             chat_id=chat_id,
             text=texto_compartilhamento,
             reply_markup=teclado,
             parse_mode="Markdown"
         )
-        context.user_data["ultima_msg_bot"] = msg.message_id
         return
 
-    msg = await context.bot.send_message(
+    await context.bot.send_message(
         chat_id=chat_id, 
         text=f"📦 **Ofertas de {termo_inteligente.title()}**\n\nAcesse o link abaixo para ver as opções em destaque na vitrine:",
         reply_markup=InlineKeyboardMarkup([
@@ -305,7 +284,6 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         ]),
         parse_mode="Markdown"
     )
-    context.user_data["ultima_msg_bot"] = msg.message_id
 
 def main():
     print("🧙‍♂️ Iniciando o Merlim Caçador de Ofertas...", flush=True)
