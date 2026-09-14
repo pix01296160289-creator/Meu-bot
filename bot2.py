@@ -4,21 +4,37 @@ import re
 from dotenv import load_dotenv
 import requests
 from groq import Groq
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
 
-# =========================
-# CONFIGURAÇÃO E CHAVES
-# =========================
+# ==============================================================================
+# CONFIGURAÇÃO E CHAVES (VARIÁVEis DE AMBIENTE DO RAILWAY)
+# ==============================================================================
 print("🔄 Carregando variáveis de ambiente...", flush=True)
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-# Links e Constantes
-LINK_VITRINE_SOCIAL = "https://meli.la/1FVqCEw"
-LINK_SAMSUNG = "https://meli.la/2gjHtvf"
+# ==============================================================================
+# SEU ESPAÇO DE LINKS EXCLUSIVOS DE AFILIADO (MELL.LA)
+# ==============================================================================
+# 1. Vitrine Geral / Padrão (Usada para buscas e vitrine completa)
+LINK_VITRINE_SOCIAL = os.getenv("LINK_VITRINE_SOCIAL", "https://meli.la/1FVqCEw")
+
+# 2. Link Específico de Celulares / Samsung
+LINK_SAMSUNG = os.getenv("LINK_SAMSUNG", "https://meli.la/2gjHtvf")
+
+# 🔗 NOVOS LINKS CUSTOMIZADOS POR CATEGORIA (Opcional, se não preencher, usam a vitrine geral)
+LINK_FERRAMENTAS = os.getenv("LINK_FERRAMENTAS", LINK_VITRINE_SOCIAL)
+LINK_INFORMATICA = os.getenv("LINK_INFORMATICA", LINK_VITRINE_SOCIAL)
+LINK_CASA = os.getenv("LINK_CASA", LINK_VITRINE_SOCIAL)
+LINK_GAMES = os.getenv("LINK_GAMES", LINK_VITRINE_SOCIAL)
+LINK_ELETRONICOS = os.getenv("LINK_ELETRONICOS", LINK_VITRINE_SOCIAL)
+LINK_CALCADOS = os.getenv("LINK_CALCADOS", LINK_VITRINE_SOCIAL)
+LINK_RELOGIOS = os.getenv("LINK_RELOGIOS", LINK_VITRINE_SOCIAL)
+LINK_CONSTRUCAO = os.getenv("LINK_CONSTRUCAO", LINK_VITRINE_SOCIAL)
+
 ARQUIVO_USUARIOS = "usuarios.txt"
 
 if not TOKEN or not GROQ_API_KEY:
@@ -34,9 +50,9 @@ def limpar_termo(texto):
     texto_limpo = re.sub(r'[^\w\s]', '', texto)
     return ' '.join(texto_limpo.split()).strip()
 
-# =========================
-# GERENCIAMENTO DE USUÁRIOS
-# =========================
+# ==============================================================================
+# GERENCIAMENTO INTELIGENTE DE USUÁRIOS
+# ==============================================================================
 def registrar_usuario(chat_id):
     chat_id_str = str(chat_id)
     usuarios = set()
@@ -56,9 +72,9 @@ def registrar_usuario(chat_id):
                 
     return len(usuarios)
 
-# =========================
-# PROCESSAMENTO INTELIGENTE (IA)
-# =========================
+# ==============================================================================
+# PROCESSAMENTO INTELIGENTE VIA GROQ (LLAMA 3.3)
+# ==============================================================================
 def interpretar_com_ia(texto_usuario):
     prompt_sistema = (
         "Você é o Merlim, assistente de e-commerce e ofertas do Mercado Livre. "
@@ -81,9 +97,9 @@ def interpretar_com_ia(texto_usuario):
         print(f"Erro na API da Groq: {e}")
         return limpar_termo(texto_usuario)
 
-# =========================
-# BUSCA DE PRODUTOS NA API DO ML
-# =========================
+# ==============================================================================
+# BUSCA DE PRODUTOS DIRETAMENTE NA API DO MERCADO LIVRE
+# ==============================================================================
 def buscar_produto_vitrine(termo_busca):
     termo_tratado = limpar_termo(termo_busca)
     try:
@@ -106,9 +122,9 @@ def buscar_produto_vitrine(termo_busca):
         print(f"❌ Erro na requisição da API: {e}", flush=True)
     return None
 
-# =========================
-# FLUXO DO TELEGRAM
-# =========================
+# ==============================================================================
+# FLUXO PRINCIPAL DO TELEGRAM
+# ==============================================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     registrar_usuario(chat_id)
@@ -117,13 +133,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     banner_url = "https://i.ibb.co/pr5XpyL8/image-1789089291368.jpg"
     
     legenda_boas_vindas = (
-        "🧙‍♂️ **MERLIM DAS OFERTAS**\n\n"
-        "Me diga o que você procura (ex: *celular*, *furadeira*, *tênis*), eu encontro a melhor opção e te entrego com acesso direto à sua vitrine oficial com comissão garantida!\n\n"
-        "👉 **Para começarmos, digite o seu nome ou apelido abaixo:**"
+        "🧙‍♂️ **M E R L I M   D A S   O F E R T A S** 🌟\n\n"
+        "✨ *Seu assistente inteligente de achados e promoções diárias!*\n\n"
+        "🔍 Me diga o que você procura (*ex: celular, tênis, fone de ouvido*), e eu encontro o melhor preço e te entrego com o seu link de afiliado garantido!\n\n"
+        "👇 **Para começarmos, digite o seu nome ou apelido abaixo:**"
     )
 
     teclado_menu = ReplyKeyboardMarkup(
-        [[KeyboardButton("✨ Minha Vitrine de Ofertas")]],
+        [[KeyboardButton("✨ Acessar Vitrine Completa 🛍️")]],
         resize_keyboard=True
     )
 
@@ -139,7 +156,7 @@ async def estatisticas(update: Update, context: ContextTypes.DEFAULT_TYPE):
             total = sum(1 for linha in f if linha.strip())
             
     await update.message.reply_text(
-        f"📊 **ESTATÍSTICAS DO BOT**\n\n👥 Total de usuários únicos cadastrados: **{total}**",
+        f"📊 **PAINEL DE ESTATÍSTICAS - MERLIM**\n\n👥 Total de usuários únicos cadastrados: **{total}** 🚀",
         parse_mode="Markdown"
     )
 
@@ -148,76 +165,96 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
     registrar_usuario(chat_id)
     texto_usuario = update.message.text.strip()
 
-    if "Vitrine" in texto_usuario:
+    # Tratamento da Vitrine Geral
+    if "Vitrine Completa" in texto_usuario or "Vitrine" in texto_usuario:
         teclado_inline_vitrine = [
-            [InlineKeyboardButton("✨ ACESSAR VITRINE COMPLETA NO SITE", url=LINK_VITRINE_SOCIAL)]
+            [InlineKeyboardButton("✨ ACESSAR VITRINE COMPLETA NO SITE 🌐", url=LINK_VITRINE_SOCIAL)]
         ]
         await update.message.reply_text(
-            "🛍️ **Vitrine Exclusiva do Merlim**\n\nClique abaixo para acessar todas as recomendações:",
+            "🛍️ **Vitrine Exclusiva do Merlim**\n\nClique abaixo para acessar todas as recomendações e ofertas especiais:",
             reply_markup=InlineKeyboardMarkup(teclado_inline_vitrine),
             parse_mode="Markdown"
         )
         return
 
-    # Botão especial para Celulares em Oferta (Link Direto Samsung)
+    # Botão especial para Celulares em Oferta (Samsung)
     if "Celulares em Oferta" in texto_usuario or "Celulares" in texto_usuario:
         teclado_inline_samsung = [
-            [InlineKeyboardButton("📱 VER CELULARES EM OFERTA", url=LINK_SAMSUNG)],
-            [InlineKeyboardButton("✨ Acessar Vitrine Completa", url=LINK_VITRINE_SOCIAL)]
+            [InlineKeyboardButton("📱 VER CELULARES EM OFERTA ⚡", url=LINK_SAMSUNG)],
+            [InlineKeyboardButton("✨ Acessar Vitrine Completa 🛍️", url=LINK_VITRINE_SOCIAL)]
         ]
         await update.message.reply_text(
-            "📱 **Ofertas Exclusivas - Celulares**\n\nToque no botão abaixo para ver as melhores opções com seu link de afiliado garantido:",
+            "📱 **Ofertas Exclusivas - Celulares & Smartphones**\n\nToque no botão abaixo para ver as melhores opções com seu link de afiliado garantido:",
             reply_markup=InlineKeyboardMarkup(teclado_inline_samsung),
             parse_mode="Markdown"
         )
         return
 
-    # Etapa de Captura de Nome
+    # Etapa 1: Captura de Nome do Usuário
     if "nome" not in context.user_data:
         nome_limpo = limpar_termo(texto_usuario)
         if len(nome_limpo) < 2 or "Vitrine" in texto_usuario:
-            await update.message.reply_text("⚠️ Por favor, digite o seu nome ou apelido primeiro:")
+            await update.message.reply_text("⚠️ Por favor, digite o seu nome ou apelido válido para continuar:")
             return
         
         context.user_data["nome"] = nome_limpo
         
-        # Teclado padrão do Telegram (sem estilos forçados que causam erro, ficando com o padrão limpo do app)
+        # Teclado visual organizado com emojis coloridos
         teclado_opcoes = ReplyKeyboardMarkup(
             [
                 [KeyboardButton("📱 Celulares em Oferta"), KeyboardButton("⚡ Ferramentas")],
                 [KeyboardButton("💻 Informática"), KeyboardButton("🏠 Casa e Cozinha")],
                 [KeyboardButton("🎮 Games"), KeyboardButton("📺 Eletrônicos")],
                 [KeyboardButton("👟 Calçados"), KeyboardButton("⌚ Relógios")],
-                [KeyboardButton("🔧 Construção"), KeyboardButton("✨ Minha Vitrine de Ofertas")]
+                [KeyboardButton("🔧 Construção"), KeyboardButton("✨ Acessar Vitrine Completa 🛍️")]
             ],
             resize_keyboard=True
         )
 
         await context.bot.send_message(
             chat_id=chat_id, 
-            text=f"✨ **Tudo pronto, {nome_limpo}!**\n\nEscolha uma categoria abaixo ou digite o que você quer buscar:",
+            text=f"✨ **Tudo pronto, {nome_limpo}!** 🧙‍♂️\n\nEscolha uma categoria abaixo ou digite qualquer produto que você deseja buscar:",
             reply_markup=teclado_opcoes,
             parse_mode="Markdown"
         )
         return
 
-    # Mapeamento rápido de categorias do teclado fixo
+    # Identificação e direcionamento inteligente por categoria do teclado
+    link_destino = LINK_VITRINE_SOCIAL
+    categoria_nome = "Ofertas"
+
     if "Ferramenta" in texto_usuario:
         texto_usuario = "ferramenta"
+        link_destino = LINK_FERRAMENTAS
+        categoria_nome = "Ferramentas"
     elif "Informática" in texto_usuario:
         texto_usuario = "informatica"
+        link_destino = LINK_INFORMATICA
+        categoria_nome = "Informática"
     elif "Casa" in texto_usuario:
         texto_usuario = "casa"
+        link_destino = LINK_CASA
+        categoria_nome = "Casa e Cozinha"
     elif "Game" in texto_usuario:
         texto_usuario = "games"
+        link_destino = LINK_GAMES
+        categoria_nome = "Games"
     elif "Eletrônico" in texto_usuario:
         texto_usuario = "eletronicos"
+        link_destino = LINK_ELETRONICOS
+        categoria_nome = "Eletrônicos"
     elif "Calçado" in texto_usuario:
         texto_usuario = "calcados"
+        link_destino = LINK_CALCADOS
+        categoria_nome = "Calçados"
     elif "Relógio" in texto_usuario:
         texto_usuario = "relogios"
+        link_destino = LINK_RELOGIOS
+        categoria_nome = "Relógios"
     elif "Construção" in texto_usuario:
         texto_usuario = "construcao"
+        link_destino = LINK_CONSTRUCAO
+        categoria_nome = "Construção"
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
@@ -227,7 +264,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 
     msg_aguarde = await context.bot.send_message(
         chat_id=chat_id, 
-        text=f"🔍 *Buscando ofertas de* `{termo_inteligente}`...", 
+        text=f"🔍 *Buscando as melhores ofertas de* `{termo_inteligente}`...", 
         parse_mode="Markdown"
     )
     
@@ -244,15 +281,15 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         foto = produto.get("thumbnail", "").replace("-I.jpg", "-O.jpg")
 
         texto_compartilhamento = (
-            f"🔥 **ACHADO EM DESTAQUE!**\n\n"
+            f"🔥 **ACHADO EM DESTAQUE!** ⚡\n\n"
             f"📦 *{titulo}*\n"
             f"💰 Preço estimado: **R$ {preco:,.2f}**\n\n"
-            f"👇 *Toque no botão abaixo para conferir na sua vitrine oficial com comissão garantida:*"
+            f"👇 *Toque no botão abaixo para conferir na vitrine com comissão garantida:*"
         )
 
         teclado = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔗 VER NA VITRINE OFICIAL", url=LINK_VITRINE_SOCIAL)],
-            [InlineKeyboardButton("✨ Acessar Vitrine Completa", url=LINK_VITRINE_SOCIAL)]
+            [InlineKeyboardButton("🔗 VER NA VITRINE OFICIAL 🚀", url=link_destino)],
+            [InlineKeyboardButton("✨ Acessar Vitrine Completa 🛍️", url=LINK_VITRINE_SOCIAL)]
         ])
 
         if foto:
@@ -280,7 +317,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         chat_id=chat_id, 
         text=f"📦 **Ofertas de {termo_inteligente.title()}**\n\nAcesse o link abaixo para ver as opções em destaque na vitrine:",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔗 ACESSAR VITRINE OFICIAL", url=LINK_VITRINE_SOCIAL)],
+            [InlineKeyboardButton("🔗 ACESSAR VITRINE OFICIAL 🚀", url=link_destino)],
         ]),
         parse_mode="Markdown"
     )
