@@ -130,8 +130,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     legenda_boas_vindas = (
         "🧙‍♂️ **M E R L I M   D A S   O F E R T A S** 🌟\n\n"
         "✨ *Seu assistente inteligente de achados e promoções diárias!*\n\n"
-        "🔍 Me diga o que você procura (*ex: celular, tênis, fone de ouvido*), e eu encontro o melhor preço e te entrego com o seu link de afiliado garantido!\n\n"
-        "👇 **Para começarmos, digite o seu nome ou apelido abaixo:**"
+        "🔍 Me diga o que você procura (*ex: celular, tênis, fone de ouvido*), e eu encontro o melhor preço e te entrego com o seu link de afiliado garantido!"
     )
 
     teclado_menu = ReplyKeyboardMarkup(
