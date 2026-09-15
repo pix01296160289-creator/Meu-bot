@@ -135,7 +135,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     teclado_menu = ReplyKeyboardMarkup(
-        [[KeyboardButton("✨ Acessar Vitrine Completa 🛍️", style="primary")]],
+        [[KeyboardButton("✨ Acessar Vitrine Completa 🛍️", style="success")]],
         resize_keyboard=True
     )
 
@@ -194,14 +194,14 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         
         context.user_data["nome"] = nome_limpo
         
-        # Teclado do rodapé estilizado com cor azul (primary) em cada botão
+        # Teclado do rodapé estilizado com cor verde (success) em todos os botões
         teclado_opcoes = ReplyKeyboardMarkup(
             [
-                [KeyboardButton("📱 Celulares em Oferta", style="primary"), KeyboardButton("⚡ Ferramentas", style="primary")],
-                [KeyboardButton("💻 Informática", style="primary"), KeyboardButton("🏠 Casa e Cozinha", style="primary")],
-                [KeyboardButton("🎮 Games", style="primary"), KeyboardButton("📺 Eletrônicos", style="primary")],
-                [KeyboardButton("👟 Calçados", style="primary"), KeyboardButton("⌚ Relógios", style="primary")],
-                [KeyboardButton("🔧 Construção", style="primary"), KeyboardButton("✨ Acessar Vitrine Completa 🛍️", style="primary")]
+                [KeyboardButton("📱 Celulares em Oferta", style="success"), KeyboardButton("⚡ Ferramentas", style="success")],
+                [KeyboardButton("💻 Informática", style="success"), KeyboardButton("🏠 Casa e Cozinha", style="success")],
+                [KeyboardButton("🎮 Games", style="success"), KeyboardButton("📺 Eletrônicos", style="success")],
+                [KeyboardButton("👟 Calçados", style="success"), KeyboardButton("⌚ Relógios", style="success")],
+                [KeyboardButton("🔧 Construção", style="success"), KeyboardButton("✨ Acessar Vitrine Completa 🛍️", style="success")]
             ],
             resize_keyboard=True
         )
