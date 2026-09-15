@@ -68,15 +68,13 @@ def registrar_usuario(chat_id):
     return len(usuarios)
 
 # ==============================================================================
-# PROCESSAMENTO INTELIGENTE VIA GROQ (LLAMA 3.3) - CATEGORIZAÇÃO AUTOMÁTICA
+# PROCESSAMENTO INTELIGENTE VIA GROQ (LLAMA 3.3)
 # ==============================================================================
 def interpretar_com_ia(texto_usuario):
     prompt_sistema = (
-        "Você é o assistente inteligente do Merlim. "
-        "Analise o texto do usuário e responda estritamente no formato JSON ou separado por vírgula com dois dados: "
-        "1. O termo limpo para busca do produto. "
-        "2. A categoria mais adequada entre: 'celulares', 'ferramentas', 'informatica', 'cozinha', 'games', 'eletronicos', 'calcados', 'relogios', 'construcao' ou 'geral'. "
-        "Exemplo para 'batedeira': batedeira, cozinha"
+        "Você é o Merlim, assistente de e-commerce e ofertas do Mercado Livre. "
+        "Extraia APENAS o termo limpo do produto desejado para busca (ex: 'celular', 'furadeira', 'televisao'). "
+        "Se for saudação ou conversa fiada, retorne 'CONVERSA'."
     )
     try:
         chat_completion = client_groq.chat.completions.create(
@@ -86,13 +84,13 @@ def interpretar_com_ia(texto_usuario):
             ],
             model="llama-3.3-70b-versatile",
             temperature=0.3,
-            max_tokens=40
+            max_tokens=30
         )
         resposta = chat_completion.choices[0].message.content.strip()
-        return resposta
+        return limpar_termo(resposta)
     except Exception as e:
         print(f"Erro na API da Groq: {e}")
-        return f"{limpar_termo(texto_usuario)}, geral"
+        return limpar_termo(texto_usuario)
 
 # ==============================================================================
 # BUSCA DE PRODUTOS DIRETAMENTE NA API DO MERCADO LIVRE
@@ -136,7 +134,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     teclado_menu = ReplyKeyboardMarkup(
-        [[KeyboardButton("✨ Acessar Vitrine Completa 🛍️")]],
+        [[KeyboardButton("✨ Acessar Vitrine Completa 🛍️", style="success")]],
         resize_keyboard=True
     )
 
@@ -173,6 +171,19 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
+    # Botão especial para Celulares em Oferta
+    if "Celulares em Oferta" in texto_usuario or "Celulares" in texto_usuario:
+        teclado_inline_samsung = [
+            [InlineKeyboardButton("📱 VER CELULARES EM OFERTA ⚡", url=LINK_SAMSUNG)],
+            [InlineKeyboardButton("✨ Acessar Vitrine Completa 🛍️", url=LINK_VITRINE_SOCIAL)]
+        ]
+        await update.message.reply_text(
+            "📱 **Ofertas Exclusivas - Celulares & Smartphones**\n\nToque no botão abaixo para ver as melhores opções com seu link de afiliado garantido:",
+            reply_markup=InlineKeyboardMarkup(teclado_inline_samsung),
+            parse_mode="Markdown"
+        )
+        return
+
     # Etapa 1: Captura de Nome do Usuário
     if "nome" not in context.user_data:
         nome_limpo = limpar_termo(texto_usuario)
@@ -182,13 +193,14 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         
         context.user_data["nome"] = nome_limpo
         
+        # Teclado do rodapé estilizado com cor verde (success) em todos os botões
         teclado_opcoes = ReplyKeyboardMarkup(
             [
-                [KeyboardButton("📱 Celulares em Oferta"), KeyboardButton("⚡ Ferramentas")],
-                [KeyboardButton("💻 Informática"), KeyboardButton("🏠 Casa e Cozinha")],
-                [KeyboardButton("🎮 Games"), KeyboardButton("📺 Eletrônicos")],
-                [KeyboardButton("👟 Calçados"), KeyboardButton("⌚ Relógios")],
-                [KeyboardButton("🔧 Construção"), KeyboardButton("✨ Acessar Vitrine Completa 🛍️")]
+                [KeyboardButton("📱 Celulares em Oferta", style="success"), KeyboardButton("⚡ Ferramentas", style="success")],
+                [KeyboardButton("💻 Informática", style="success"), KeyboardButton("🏠 Casa e Cozinha", style="success")],
+                [KeyboardButton("🎮 Games", style="success"), KeyboardButton("📺 Eletrônicos", style="success")],
+                [KeyboardButton("👟 Calçados", style="success"), KeyboardButton("⌚ Relógios", style="success")],
+                [KeyboardButton("🔧 Construção", style="success"), KeyboardButton("✨ Acessar Vitrine Completa 🛍️", style="success")]
             ],
             resize_keyboard=True
         )
@@ -201,75 +213,47 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
-    # Mapeamento manual dos botões do teclado caso o usuário clique neles
+    # Identificação e direcionamento inteligente por categoria do teclado
     link_destino = LINK_VITRINE_SOCIAL
-    termo_busca_usuario = texto_usuario
 
     if "Ferramenta" in texto_usuario:
-        termo_busca_usuario = "ferramenta"
+        texto_usuario = "ferramenta"
         link_destino = LINK_FERRAMENTAS
     elif "Informática" in texto_usuario:
-        termo_busca_usuario = "informatica"
+        texto_usuario = "informatica"
         link_destino = LINK_INFORMATICA
     elif "Casa" in texto_usuario:
-        termo_busca_usuario = "casa"
+        texto_usuario = "casa"
         link_destino = LINK_COZINHA
     elif "Game" in texto_usuario:
-        termo_busca_usuario = "games"
+        texto_usuario = "games"
         link_destino = LINK_GAMES
     elif "Eletrônico" in texto_usuario:
-        termo_busca_usuario = "eletronicos"
+        texto_usuario = "eletronicos"
         link_destino = LINK_ELETRONICOS
     elif "Calçado" in texto_usuario:
-        termo_busca_usuario = "calcados"
+        texto_usuario = "calcados"
         link_destino = LINK_CALCADOS
     elif "Relógio" in texto_usuario:
-        termo_busca_usuario = "relogios"
+        texto_usuario = "relogios"
         link_destino = LINK_RELOGIOS
     elif "Construção" in texto_usuario:
-        termo_busca_usuario = "construcao"
+        texto_usuario = "construcao"
         link_destino = LINK_CONSTRUCAO
-    elif "Celulares em Oferta" in texto_usuario or "Celulares" in texto_usuario:
-        termo_busca_usuario = "celular"
-        link_destino = LINK_SAMSUNG
-    else:
-        # Se for texto livre (ex: "batedeira"), a IA processa o termo e a categoria
-        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-        resposta_ia = interpretar_com_ia(texto_usuario)
-        
-        partes = [p.strip() for p in resposta_ia.split(",")]
-        termo_busca_usuario = partes[0] if len(partes) > 0 else texto_usuario
-        categoria_ia = partes[1].lower() if len(partes) > 1 else "geral"
 
-        # Vincula a categoria detectada pela IA ao link de afiliado correto
-        if "cozinha" in categoria_ia:
-            link_destino = LINK_COZINHA
-        elif "celular" in categoria_ia:
-            link_destino = LINK_SAMSUNG
-        elif "ferramenta" in categoria_ia:
-            link_destino = LINK_FERRAMENTAS
-        elif "informatica" in categoria_ia:
-            link_destino = LINK_INFORMATICA
-        elif "game" in categoria_ia:
-            link_destino = LINK_GAMES
-        elif "eletronico" in categoria_ia:
-            link_destino = LINK_ELETRONICOS
-        elif "calcado" in categoria_ia:
-            link_destino = LINK_CALCADOS
-        elif "relogio" in categoria_ia:
-            link_destino = LINK_RELOGIOS
-        elif "construcao" in categoria_ia:
-            link_destino = LINK_CONSTRUCAO
-        else:
-            link_destino = LINK_VITRINE_SOCIAL
+    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+
+    termo_inteligente = interpretar_com_ia(texto_usuario)
+    if termo_inteligente == "CONVERSA" or not termo_inteligente:
+        termo_inteligente = limpar_termo(texto_usuario)
 
     msg_aguarde = await context.bot.send_message(
         chat_id=chat_id, 
-        text=f"🔍 *Buscando as melhores ofertas de* `{termo_busca_usuario}`...", 
+        text=f"🔍 *Buscando as melhores ofertas de* `{termo_inteligente}`...", 
         parse_mode="Markdown"
     )
     
-    produto = buscar_produto_vitrine(termo_busca_usuario)
+    produto = buscar_produto_vitrine(termo_inteligente)
     
     try:
         await context.bot.delete_message(chat_id=chat_id, message_id=msg_aguarde.message_id)
@@ -316,7 +300,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 
     await context.bot.send_message(
         chat_id=chat_id, 
-        text=f"📦 **Ofertas de {termo_busca_usuario.title()}**\n\nAcesse o link abaixo para ver as opções em destaque na vitrine:",
+        text=f"📦 **Ofertas de {termo_inteligente.title()}**\n\nAcesse o link abaixo para ver as opções em destaque na vitrine:",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🔗 ACESSAR VITRINE OFICIAL 🚀", url=link_destino)],
         ]),
