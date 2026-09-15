@@ -73,7 +73,7 @@ def registrar_usuario(chat_id):
 def interpretar_com_ia(texto_usuario):
     prompt_sistema = (
         "Você é o assistente inteligente do Merlim. "
-        "Analise o texto do usuário e responda estritamente separado por vírgula com dois dados: "
+        "Analise o texto do usuário e responda estritamente no formato JSON ou separado por vírgula com dois dados: "
         "1. O termo limpo para busca do produto. "
         "2. A categoria mais adequada entre: 'celulares', 'ferramentas', 'informatica', 'cozinha', 'games', 'eletronicos', 'calcados', 'relogios', 'construcao' ou 'geral'. "
         "Exemplo para 'batedeira': batedeira, cozinha"
@@ -201,7 +201,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
-    # Mapeamento dos botões do teclado ou processamento inteligente via IA
+    # Mapeamento manual dos botões do teclado caso o usuário clique neles
     link_destino = LINK_VITRINE_SOCIAL
     termo_busca_usuario = texto_usuario
 
@@ -233,7 +233,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         termo_busca_usuario = "celular"
         link_destino = LINK_SAMSUNG
     else:
-        # Texto livre: a IA limpa o termo e descobre a categoria correta
+        # Se for texto livre (ex: "batedeira"), a IA processa o termo e a categoria
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
         resposta_ia = interpretar_com_ia(texto_usuario)
         
@@ -241,6 +241,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         termo_busca_usuario = partes[0] if len(partes) > 0 else texto_usuario
         categoria_ia = partes[1].lower() if len(partes) > 1 else "geral"
 
+        # Vincula a categoria detectada pela IA ao link de afiliado correto
         if "cozinha" in categoria_ia:
             link_destino = LINK_COZINHA
         elif "celular" in categoria_ia:
