@@ -135,7 +135,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     teclado_menu = ReplyKeyboardMarkup(
-        [[KeyboardButton("✨ Acessar Vitrine Completa 🛍️")]],
+        [[KeyboardButton("✨ Acessar Vitrine Completa 🛍️", style="primary")]],
         resize_keyboard=True
     )
 
@@ -194,14 +194,14 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         
         context.user_data["nome"] = nome_limpo
         
-        # Teclado visual organizado com emojis coloridos
+        # Teclado do rodapé estilizado com cor azul (primary) em cada botão
         teclado_opcoes = ReplyKeyboardMarkup(
             [
-                [KeyboardButton("📱 Celulares em Oferta"), KeyboardButton("⚡ Ferramentas")],
-                [KeyboardButton("💻 Informática"), KeyboardButton("🏠 Casa e Cozinha")],
-                [KeyboardButton("🎮 Games"), KeyboardButton("📺 Eletrônicos")],
-                [KeyboardButton("👟 Calçados"), KeyboardButton("⌚ Relógios")],
-                [KeyboardButton("🔧 Construção"), KeyboardButton("✨ Acessar Vitrine Completa 🛍️")]
+                [KeyboardButton("📱 Celulares em Oferta", style="primary"), KeyboardButton("⚡ Ferramentas", style="primary")],
+                [KeyboardButton("💻 Informática", style="primary"), KeyboardButton("🏠 Casa e Cozinha", style="primary")],
+                [KeyboardButton("🎮 Games", style="primary"), KeyboardButton("📺 Eletrônicos", style="primary")],
+                [KeyboardButton("👟 Calçados", style="primary"), KeyboardButton("⌚ Relógios", style="primary")],
+                [KeyboardButton("🔧 Construção", style="primary"), KeyboardButton("✨ Acessar Vitrine Completa 🛍️", style="primary")]
             ],
             resize_keyboard=True
         )
