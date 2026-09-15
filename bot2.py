@@ -68,13 +68,15 @@ def registrar_usuario(chat_id):
     return len(usuarios)
 
 # ==============================================================================
-# PROCESSAMENTO INTELIGENTE VIA GROQ (LLAMA 3.3)
+# PROCESSAMENTO INTELIGENTE VIA GROQ (LLAMA 3.3) - CATEGORIZAÇÃO AUTOMÁTICA
 # ==============================================================================
 def interpretar_com_ia(texto_usuario):
     prompt_sistema = (
-        "Você é o Merlim, assistente de e-commerce e ofertas do Mercado Livre. "
-        "Extraia APENAS o termo limpo do produto desejado para busca (ex: 'celular', 'furadeira', 'televisao'). "
-        "Se for saudação ou conversa fiada, retorne 'CONVERSA'."
+        "Você é o assistente inteligente do Merlim. "
+        "Analise o texto do usuário e responda estritamente separado por vírgula com dois dados: "
+        "1. O termo limpo para busca do produto. "
+        "2. A categoria mais adequada entre: 'celulares', 'ferramentas', 'informatica', 'cozinha', 'games', 'eletronicos', 'calcados', 'relogios', 'construcao' ou 'geral'. "
+        "Exemplo para 'batedeira': batedeira, cozinha"
     )
     try:
         chat_completion = client_groq.chat.completions.create(
@@ -84,13 +86,13 @@ def interpretar_com_ia(texto_usuario):
             ],
             model="llama-3.3-70b-versatile",
             temperature=0.3,
-            max_tokens=30
+            max_tokens=40
         )
         resposta = chat_completion.choices[0].message.content.strip()
-        return limpar_termo(resposta)
+        return resposta
     except Exception as e:
         print(f"Erro na API da Groq: {e}")
-        return limpar_termo(texto_usuario)
+        return f"{limpar_termo(texto_usuario)}, geral"
 
 # ==============================================================================
 # BUSCA DE PRODUTOS DIRETAMENTE NA API DO MERCADO LIVRE
@@ -134,7 +136,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     teclado_menu = ReplyKeyboardMarkup(
-        [[KeyboardButton("✨ Acessar Vitrine Completa 🛍️", style="success")]],
+        [[KeyboardButton("✨ Acessar Vitrine Completa 🛍️")]],
         resize_keyboard=True
     )
 
@@ -171,19 +173,6 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
-    # Botão especial para Celulares em Oferta
-    if "Celulares em Oferta" in texto_usuario or "Celulares" in texto_usuario:
-        teclado_inline_samsung = [
-            [InlineKeyboardButton("📱 VER CELULARES EM OFERTA ⚡", url=LINK_SAMSUNG)],
-            [InlineKeyboardButton("✨ Acessar Vitrine Completa 🛍️", url=LINK_VITRINE_SOCIAL)]
-        ]
-        await update.message.reply_text(
-            "📱 **Ofertas Exclusivas - Celulares & Smartphones**\n\nToque no botão abaixo para ver as melhores opções com seu link de afiliado garantido:",
-            reply_markup=InlineKeyboardMarkup(teclado_inline_samsung),
-            parse_mode="Markdown"
-        )
-        return
-
     # Etapa 1: Captura de Nome do Usuário
     if "nome" not in context.user_data:
         nome_limpo = limpar_termo(texto_usuario)
@@ -193,14 +182,13 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         
         context.user_data["nome"] = nome_limpo
         
-        # Teclado do rodapé estilizado com cor verde (success) em todos os botões
         teclado_opcoes = ReplyKeyboardMarkup(
             [
-                [KeyboardButton("📱 Celulares em Oferta", style="success"), KeyboardButton("⚡ Ferramentas", style="success")],
-                [KeyboardButton("💻 Informática", style="success"), KeyboardButton("🏠 Casa e Cozinha", style="success")],
-                [KeyboardButton("🎮 Games", style="success"), KeyboardButton("📺 Eletrônicos", style="success")],
-                [KeyboardButton("👟 Calçados", style="success"), KeyboardButton("⌚ Relógios", style="success")],
-                [KeyboardButton("🔧 Construção", style="success"), KeyboardButton("✨ Acessar Vitrine Completa 🛍️", style="success")]
+                [KeyboardButton("📱 Celulares em Oferta"), KeyboardButton("⚡ Ferramentas")],
+                [KeyboardButton("💻 Informática"), KeyboardButton("🏠 Casa e Cozinha")],
+                [KeyboardButton("🎮 Games"), KeyboardButton("📺 Eletrônicos")],
+                [KeyboardButton("👟 Calçados"), KeyboardButton("⌚ Relógios")],
+                [KeyboardButton("🔧 Construção"), KeyboardButton("✨ Acessar Vitrine Completa 🛍️")]
             ],
             resize_keyboard=True
         )
@@ -213,47 +201,74 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
-    # Identificação e direcionamento inteligente por categoria do teclado
+    # Mapeamento dos botões do teclado ou processamento inteligente via IA
     link_destino = LINK_VITRINE_SOCIAL
+    termo_busca_usuario = texto_usuario
 
     if "Ferramenta" in texto_usuario:
-        texto_usuario = "ferramenta"
+        termo_busca_usuario = "ferramenta"
         link_destino = LINK_FERRAMENTAS
     elif "Informática" in texto_usuario:
-        texto_usuario = "informatica"
+        termo_busca_usuario = "informatica"
         link_destino = LINK_INFORMATICA
     elif "Casa" in texto_usuario:
-        texto_usuario = "casa"
+        termo_busca_usuario = "casa"
         link_destino = LINK_COZINHA
     elif "Game" in texto_usuario:
-        texto_usuario = "games"
+        termo_busca_usuario = "games"
         link_destino = LINK_GAMES
     elif "Eletrônico" in texto_usuario:
-        texto_usuario = "eletronicos"
+        termo_busca_usuario = "eletronicos"
         link_destino = LINK_ELETRONICOS
     elif "Calçado" in texto_usuario:
-        texto_usuario = "calcados"
+        termo_busca_usuario = "calcados"
         link_destino = LINK_CALCADOS
     elif "Relógio" in texto_usuario:
-        texto_usuario = "relogios"
+        termo_busca_usuario = "relogios"
         link_destino = LINK_RELOGIOS
     elif "Construção" in texto_usuario:
-        texto_usuario = "construcao"
+        termo_busca_usuario = "construcao"
         link_destino = LINK_CONSTRUCAO
+    elif "Celulares em Oferta" in texto_usuario or "Celulares" in texto_usuario:
+        termo_busca_usuario = "celular"
+        link_destino = LINK_SAMSUNG
+    else:
+        # Texto livre: a IA limpa o termo e descobre a categoria correta
+        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+        resposta_ia = interpretar_com_ia(texto_usuario)
+        
+        partes = [p.strip() for p in resposta_ia.split(",")]
+        termo_busca_usuario = partes[0] if len(partes) > 0 else texto_usuario
+        categoria_ia = partes[1].lower() if len(partes) > 1 else "geral"
 
-    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-
-    termo_inteligente = interpretar_com_ia(texto_usuario)
-    if termo_inteligente == "CONVERSA" or not termo_inteligente:
-        termo_inteligente = limpar_termo(texto_usuario)
+        if "cozinha" in categoria_ia:
+            link_destino = LINK_COZINHA
+        elif "celular" in categoria_ia:
+            link_destino = LINK_SAMSUNG
+        elif "ferramenta" in categoria_ia:
+            link_destino = LINK_FERRAMENTAS
+        elif "informatica" in categoria_ia:
+            link_destino = LINK_INFORMATICA
+        elif "game" in categoria_ia:
+            link_destino = LINK_GAMES
+        elif "eletronico" in categoria_ia:
+            link_destino = LINK_ELETRONICOS
+        elif "calcado" in categoria_ia:
+            link_destino = LINK_CALCADOS
+        elif "relogio" in categoria_ia:
+            link_destino = LINK_RELOGIOS
+        elif "construcao" in categoria_ia:
+            link_destino = LINK_CONSTRUCAO
+        else:
+            link_destino = LINK_VITRINE_SOCIAL
 
     msg_aguarde = await context.bot.send_message(
         chat_id=chat_id, 
-        text=f"🔍 *Buscando as melhores ofertas de* `{termo_inteligente}`...", 
+        text=f"🔍 *Buscando as melhores ofertas de* `{termo_busca_usuario}`...", 
         parse_mode="Markdown"
     )
     
-    produto = buscar_produto_vitrine(termo_inteligente)
+    produto = buscar_produto_vitrine(termo_busca_usuario)
     
     try:
         await context.bot.delete_message(chat_id=chat_id, message_id=msg_aguarde.message_id)
@@ -269,13 +284,8 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
             f"🔥 **ACHADO EM DESTAQUE!** ⚡\n\n"
             f"📦 *{titulo}*\n"
             f"💰 Preço estimado: **R$ {preco:,.2f}**\n\n"
-            f"👇 *Toque no botão abaixo para conferir na vitrine com comissão garantida:*"
+            f"👉 [CLIQUE AQUI PARA ABRIR A OFERTA NA VITRINE]({link_destino})"
         )
-
-        teclado = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔗 VER NA VITRINE OFICIAL 🚀", url=link_destino)],
-            [InlineKeyboardButton("✨ Acessar Vitrine Completa 🛍️", url=LINK_VITRINE_SOCIAL)]
-        ])
 
         if foto:
             try:
@@ -283,7 +293,6 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
                     chat_id=chat_id,
                     photo=foto,
                     caption=texto_compartilhamento,
-                    reply_markup=teclado,
                     parse_mode="Markdown"
                 )
                 return
@@ -293,17 +302,13 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         await context.bot.send_message(
             chat_id=chat_id,
             text=texto_compartilhamento,
-            reply_markup=teclado,
             parse_mode="Markdown"
         )
         return
 
     await context.bot.send_message(
         chat_id=chat_id, 
-        text=f"📦 **Ofertas de {termo_inteligente.title()}**\n\nAcesse o link abaixo para ver as opções em destaque na vitrine:",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔗 ACESSAR VITRINE OFICIAL 🚀", url=link_destino)],
-        ]),
+        text=f"📦 **Ofertas de {termo_busca_usuario.title()}**\n\n👉 [CLIQUE AQUI PARA ABRIR A OFERTA NA VITRINE]({link_destino})",
         parse_mode="Markdown"
     )
 
