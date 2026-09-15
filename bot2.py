@@ -4,12 +4,12 @@ import re
 from dotenv import load_dotenv
 import requests
 from groq import Groq
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
 
 # ==============================================================================
-# CONFIGURAÇÃO E CHAVES (VARIÁVEis DE AMBIENTE DO RAILWAY)
+# CONFIGURAÇÃO E CHAVES (VARIÁVEIS DE AMBIENTE DO RAILWAY)
 # ==============================================================================
 print("🔄 Carregando variáveis de ambiente...", flush=True)
 load_dotenv()
@@ -17,23 +17,18 @@ TOKEN = os.getenv("TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 # ==============================================================================
-# SEU ESPAÇO DE LINKS EXCLUSIVOS DE AFILIADO (MELL.LA)
+# LINKS OFICIAIS DE AFILIADO DO MERCADO LIVRE (MELL.LA)
 # ==============================================================================
-# 1. Vitrine Geral / Padrão (Usada para buscas e vitrine completa)
-LINK_VITRINE_SOCIAL = os.getenv("LINK_VITRINE_SOCIAL", "https://meli.la/1FVqCEw")
-
-# 2. Link Específico de Celulares / Samsung
-LINK_SAMSUNG = os.getenv("LINK_SAMSUNG", "https://meli.la/2gjHtvf")
-
-# 🔗 NOVOS LINKS CUSTOMIZADOS POR CATEGORIA (Opcional, se não preencher, usam a vitrine geral)
-LINK_FERRAMENTAS = os.getenv("LINK_FERRAMENTAS", LINK_VITRINE_SOCIAL)
-LINK_INFORMATICA = os.getenv("LINK_INFORMATICA", LINK_VITRINE_SOCIAL)
-LINK_CASA = os.getenv("LINK_CASA", LINK_VITRINE_SOCIAL)
-LINK_GAMES = os.getenv("LINK_GAMES", LINK_VITRINE_SOCIAL)
-LINK_ELETRONICOS = os.getenv("LINK_ELETRONICOS", LINK_VITRINE_SOCIAL)
-LINK_CALCADOS = os.getenv("LINK_CALCADOS", LINK_VITRINE_SOCIAL)
-LINK_RELOGIOS = os.getenv("LINK_RELOGIOS", LINK_VITRINE_SOCIAL)
-LINK_CONSTRUCAO = os.getenv("LINK_CONSTRUCAO", LINK_VITRINE_SOCIAL)
+LINK_VITRINE_SOCIAL = "https://meli.la/1FVqCEw"
+LINK_SAMSUNG        = "https://meli.la/2gjHtvf"
+LINK_CONSTRUCAO     = "https://meli.la/2Wy5ujN"
+LINK_RELOGIOS       = "https://meli.la/2cyMfNN"
+LINK_CALCADOS       = "https://meli.la/1sUVhQX"
+LINK_ELETRONICOS    = "https://meli.la/1v7VNAK"
+LINK_COZINHA        = "https://meli.la/2jU6k4f"
+LINK_GAMES          = "https://meli.la/25w7Wsk"
+LINK_INFORMATICA    = "https://meli.la/32JAaW3"
+LINK_FERRAMENTAS    = "https://meli.la/33oTwjv"
 
 ARQUIVO_USUARIOS = "usuarios.txt"
 
@@ -177,7 +172,7 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
-    # Botão especial para Celulares em Oferta (Samsung)
+    # Botão especial para Celulares em Oferta
     if "Celulares em Oferta" in texto_usuario or "Celulares" in texto_usuario:
         teclado_inline_samsung = [
             [InlineKeyboardButton("📱 VER CELULARES EM OFERTA ⚡", url=LINK_SAMSUNG)],
@@ -221,40 +216,31 @@ async def responder_texto_livre(update: Update, context: ContextTypes.DEFAULT_TY
 
     # Identificação e direcionamento inteligente por categoria do teclado
     link_destino = LINK_VITRINE_SOCIAL
-    categoria_nome = "Ofertas"
 
     if "Ferramenta" in texto_usuario:
         texto_usuario = "ferramenta"
         link_destino = LINK_FERRAMENTAS
-        categoria_nome = "Ferramentas"
     elif "Informática" in texto_usuario:
         texto_usuario = "informatica"
         link_destino = LINK_INFORMATICA
-        categoria_nome = "Informática"
     elif "Casa" in texto_usuario:
         texto_usuario = "casa"
-        link_destino = LINK_CASA
-        categoria_nome = "Casa e Cozinha"
+        link_destino = LINK_COZINHA
     elif "Game" in texto_usuario:
         texto_usuario = "games"
         link_destino = LINK_GAMES
-        categoria_nome = "Games"
     elif "Eletrônico" in texto_usuario:
         texto_usuario = "eletronicos"
         link_destino = LINK_ELETRONICOS
-        categoria_nome = "Eletrônicos"
     elif "Calçado" in texto_usuario:
         texto_usuario = "calcados"
         link_destino = LINK_CALCADOS
-        categoria_nome = "Calçados"
     elif "Relógio" in texto_usuario:
         texto_usuario = "relogios"
         link_destino = LINK_RELOGIOS
-        categoria_nome = "Relógios"
     elif "Construção" in texto_usuario:
         texto_usuario = "construcao"
         link_destino = LINK_CONSTRUCAO
-        categoria_nome = "Construção"
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
